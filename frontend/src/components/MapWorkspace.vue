@@ -20,6 +20,7 @@ const cursorCoordinates = shallowRef('将鼠标移入地图读取坐标')
 const activeBasemap = shallowRef<BasemapKey>('image')
 const compareMode = shallowRef<CompareMode>('both')
 const TIANDITU_TOKEN = import.meta.env.VITE_TIANDITU_TOKEN ?? ''
+const hasTiandituToken = computed(() => TIANDITU_TOKEN.trim().length > 0)
 const TIANDITU_TILE =
   'https://t0.tianditu.gov.cn/{layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={layer}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' +
   TIANDITU_TOKEN
@@ -61,7 +62,7 @@ const sourceBounds = computed<[number, number, number, number] | null>(() => {
   return isLngLat ? [west, south, east, north] : null
 })
 
-const shouldShowBasemap = computed(() => !props.asset || Boolean(props.product || sourceBounds.value))
+const shouldShowBasemap = computed(() => true)
 const hasBeforePreview = computed(() => Boolean(assetPreviewUrl.value && sourceBounds.value))
 const statusText = computed(() => {
   if (props.product && previewUrl.value) return `正在查看 ${props.product.index.toUpperCase()} 结果`
@@ -334,6 +335,10 @@ onBeforeUnmount(() => {
       <span>CURSOR</span>
       {{ cursorCoordinates }}
     </div>
+    <div v-if="!hasTiandituToken" class="token-warning">
+      <strong>天地图 Token 未配置</strong>
+      <span>在本地 `.env` 设置 VITE_TIANDITU_TOKEN 后会显示在线底图</span>
+    </div>
     <div class="layer-control" aria-label="图层控制">
       <div class="control-group">
         <span>天地图底图</span>
@@ -455,6 +460,7 @@ onBeforeUnmount(() => {
 .map-topline,
 .coordinate-chip,
 .layer-control,
+.token-warning,
 .source-note {
   position: absolute;
   z-index: 2;
@@ -502,6 +508,23 @@ onBeforeUnmount(() => {
 .coordinate-chip span {
   margin-right: 8px;
   color: var(--muted);
+}
+
+.token-warning {
+  left: 18px;
+  bottom: 72px;
+  display: grid;
+  max-width: min(360px, calc(100% - 396px));
+  gap: 5px;
+  padding: 10px 12px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.token-warning strong {
+  color: var(--acid);
+  font-size: 13px;
 }
 
 .layer-control {
@@ -633,6 +656,13 @@ onBeforeUnmount(() => {
     right: 12px;
     bottom: 260px;
     left: 12px;
+  }
+
+  .token-warning {
+    right: 12px;
+    bottom: 308px;
+    left: 12px;
+    max-width: none;
   }
 
   .layer-control {
