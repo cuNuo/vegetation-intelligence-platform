@@ -1,0 +1,191 @@
+name: vegetation-intelligence-platform
+
+x-api-environment: &api-environment
+  VIP_REDIS_URL: redis://redis:6379/0
+  VIP_CELERY_ALWAYS_EAGER: "false"
+  VIP_MINIO_ENDPOINT: minio:9000
+  VIP_MINIO_ACCESS_KEY: vegetation
+  VIP_MINIO_SECRET_KEY: vegetation-secret
+  VIP_MINIO_ENABLED: "true"
+  VIP_NACOS_URL: http://nacos:8848
+
+x-api-service: &api-service
+  build:
+    context: ./backend
+  restart: unless-stopped
+  depends_on:
+    redis:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    nacos:
+      condition: service_started
+  volumes:
+    - vegetation-data:/app/data
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+
+services:
+  traefik:
+    image: traefik:v3.4
+    restart: unless-stopped
+    command: ["--configFile=/etc/traefik/traefik.yml"]
+    ports:
+      - "8080:80"
+      - "8081:8080"
+    volumes:
+      - ./infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - traefik-dynamic:/dynamic
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      api-basic:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend.priority=1
+      - traefik.http.services.frontend.loadbalancer.server.port=80
+
+  api-basic:
+    <<: *api-service
+    environment:
+      <<: *api-environment
+      VIP_SERVICE_NAME: vegetation-basic
+      VIP_SERVICE_HOST: api-basic
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.platform-api.rule=PathPrefix(`/api`) || PathPrefix(`/jobs`) || PathPrefix(`/processes`) || PathPrefix(`/artifacts`) || PathPrefix(`/metrics`)
+      - traefik.http.routers.platform-api.priority=100
+      - traefik.http.services.platform-api.loadbalancer.server.port=8000
+
+  api-adjusted:
+    <<: *api-service
+    environment:
+      <<: *api-environment
+      VIP_SERVICE_NAME: vegetation-adjusted
+      VIP_SERVICE_HOST: api-adjusted
+
+  api-advanced:
+    <<: *api-service
+    environment:
+      <<: *api-environment
+      VIP_SERVICE_NAME: vegetation-advanced
+      VIP_SERVICE_HOST: api-advanced
+
+  worker-numpy:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["celery", "-A", "app.celery_app:celery_app", "worker", "-Q", "normal,low,batch", "--loglevel=INFO", "--concurrency=1", "--hostname=numpy@%h"]
+    environment:
+      <<: *api-environment
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - vegetation-data:/app/data
+
+  worker-joblib:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["celery", "-A", "app.celery_app:celery_app", "worker", "-Q", "urgent,high,normal", "--loglevel=INFO", "--concurrency=2", "--hostname=joblib@%h"]
+    environment:
+      <<: *api-environment
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - vegetation-data:/app/data
+
+  worker-gpu:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.gpu
+    restart: unless-stopped
+    environment:
+      <<: *api-environment
+      NVIDIA_VISIBLE_DEVICES: all
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - vegetation-data:/app/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  nacos-bridge:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ["python", "-m", "app.nacos_bridge"]
+    environment:
+      VIP_NACOS_URL: http://nacos:8848
+      TRAEFIK_DYNAMIC_PATH: /dynamic/nacos.yml
+    depends_on:
+      - nacos
+      - traefik
+    volumes:
+      - traefik-dynamic:/dynamic
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis-data:/data
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: vegetation
+      MINIO_ROOT_PASSWORD: vegetation-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - minio-data:/data
+
+  nacos:
+    image: nacos/nacos-server:v2.4.3
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    volumes:
+      - nacos-data:/home/nacos/data
+
+volumes:
+  vegetation-data:
+  redis-data:
+  minio-data:
+  nacos-data:
+  traefik-dynamic:

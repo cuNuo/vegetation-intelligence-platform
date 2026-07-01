@@ -1,0 +1,6 @@
+INFO:     Started server process [45324]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 13] error while attempting to bind on address ('127.0.0.1', 8000): [winerror 10013] 以一种访问权限不允许的方式做了一个访问套接字的尝试。
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.

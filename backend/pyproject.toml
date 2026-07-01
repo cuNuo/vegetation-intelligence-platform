@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vegetation-intelligence-platform"
+version = "0.1.0"
+description = "植被指数多引擎计算、OGC兼容服务与智能分析代理"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "celery[redis]>=5.4,<6",
+  "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
+  "joblib>=1.4,<2",
+  "langchain>=0.3,<1",
+  "langchain-anthropic>=0.3,<1",
+  "langchain-openai>=0.3,<1",
+  "minio>=7.2,<8",
+  "numpy>=2.0,<3",
+  "pillow>=11,<12",
+  "prometheus-client>=0.21,<1",
+  "psycopg[binary]>=3.2,<4",
+  "pygeoapi>=0.20,<1",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "python-multipart>=0.0.20,<1",
+  "rasterio>=1.4,<2",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+gpu = ["torch>=2.6"]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.25,<1",
+  "ruff>=0.9,<1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

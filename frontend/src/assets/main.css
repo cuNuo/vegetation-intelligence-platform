@@ -1,0 +1,143 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap');
+
+:root {
+  --font-display: 'Noto Serif SC', Georgia, serif;
+  --font-body: 'Noto Sans SC', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --accent: #9ee81f;
+  --accent-strong: #bcff42;
+  --acid: var(--accent-strong);
+  --success: #9ee81f;
+  --success-border: rgba(158, 232, 31, 0.38);
+  --danger: #ff8372;
+  --danger-border: rgba(255, 131, 114, 0.45);
+  --warning: #d99b4c;
+  --surface-0: #070c09;
+  --surface-1: #0d1712;
+  --surface-2: #121f18;
+  --surface-3: #19291f;
+  --surface-hover: rgba(188, 255, 66, 0.07);
+  --text-0: #f2f8ee;
+  --text-1: #e4eee0;
+  --text-2: #a7b5a0;
+  --text-3: #71806b;
+  --muted: var(--text-3);
+  --muted-light: var(--text-2);
+  --border: rgba(167, 202, 106, 0.16);
+  --border-strong: rgba(167, 202, 106, 0.28);
+  --shadow-soft: rgba(0, 0, 0, 0.24);
+  --grid-line: rgba(183, 222, 120, 0.022);
+  color: var(--text-1);
+  background: var(--surface-0);
+  font-size: 15px;
+  font-family: var(--font-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+:root[data-theme='light'] {
+  --accent: #5f8f13;
+  --accent-strong: #3f7100;
+  --success: #4f8110;
+  --success-border: rgba(79, 129, 16, 0.34);
+  --danger: #b74333;
+  --danger-border: rgba(183, 67, 51, 0.35);
+  --warning: #9a620e;
+  --surface-0: #f6f7f2;
+  --surface-1: #ffffff;
+  --surface-2: #eef1e8;
+  --surface-3: #e3e8da;
+  --surface-hover: rgba(77, 119, 8, 0.08);
+  --text-0: #152013;
+  --text-1: #22301e;
+  --text-2: #52634d;
+  --text-3: #71806b;
+  --border: rgba(50, 78, 42, 0.14);
+  --border-strong: rgba(50, 78, 42, 0.26);
+  --shadow-soft: rgba(42, 54, 37, 0.12);
+  --grid-line: rgba(45, 75, 37, 0.035);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  overflow: hidden;
+  scroll-behavior: smooth;
+  background: var(--surface-0);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+body {
+  width: 100%;
+  height: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  overflow: hidden;
+  margin: 0;
+  font-size: 15px;
+  background:
+    radial-gradient(circle at 14% 11%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 27%),
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    var(--surface-0);
+  background-size: auto, 44px 44px, 44px 44px, auto;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--surface-0);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-1);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid var(--surface-1);
+  border-radius: 8px;
+  background: var(--text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

@@ -1,0 +1,293 @@
+{
+  "id": "2026-06-24-163726",
+  "generated_at": "2026-06-24T08:37:26.1661523Z",
+  "language": "zh",
+  "pages": [
+    {
+      "slug": "1-xiang-mu-gai-lan",
+      "title": "项目概览",
+      "file": "1-xiang-mu-gai-lan.md",
+      "section": "入门指南",
+      "level": "..."
+    },
+    {
+      "slug": "2-kuai-su-kai-shi",
+      "title": "快速开始",
+      "file": "2-kuai-su-kai-shi.md",
+      "section": "入门指南",
+      "level": "..."
+    },
+    {
+      "slug": "3-hou-duan-huan-jing-pei-zhi",
+      "title": "后端环境配置",
+      "file": "3-hou-duan-huan-jing-pei-zhi.md",
+      "section": "入门指南",
+      "group": "环境搭建",
+      "level": "..."
+    },
+    {
+      "slug": "4-qian-duan-huan-jing-pei-zhi",
+      "title": "前端环境配置",
+      "file": "4-qian-duan-huan-jing-pei-zhi.md",
+      "section": "入门指南",
+      "group": "环境搭建",
+      "level": "..."
+    },
+    {
+      "slug": "5-rong-qi-hua-bu-shu",
+      "title": "容器化部署",
+      "file": "5-rong-qi-hua-bu-shu.md",
+      "section": "入门指南",
+      "group": "环境搭建",
+      "level": "..."
+    },
+    {
+      "slug": "6-zhi-bei-zhi-shu-ji-suan",
+      "title": "植被指数计算",
+      "file": "6-zhi-bei-zhi-shu-ji-suan.md",
+      "section": "入门指南",
+      "group": "核心功能",
+      "level": "..."
+    },
+    {
+      "slug": "7-zhi-neng-ti-jiao-hu",
+      "title": "智能体交互",
+      "file": "7-zhi-neng-ti-jiao-hu.md",
+      "section": "入门指南",
+      "group": "核心功能",
+      "level": "..."
+    },
+    {
+      "slug": "8-ren-wu-guan-li",
+      "title": "任务管理",
+      "file": "8-ren-wu-guan-li.md",
+      "section": "入门指南",
+      "group": "核心功能",
+      "level": "..."
+    },
+    {
+      "slug": "9-xi-tong-jia-gou",
+      "title": "系统架构",
+      "file": "9-xi-tong-jia-gou.md",
+      "section": "深入探索",
+      "group": "架构设计",
+      "level": "..."
+    },
+    {
+      "slug": "10-hou-duan-jia-gou",
+      "title": "后端架构",
+      "file": "10-hou-duan-jia-gou.md",
+      "section": "深入探索",
+      "group": "架构设计",
+      "level": "..."
+    },
+    {
+      "slug": "11-qian-duan-jia-gou",
+      "title": "前端架构",
+      "file": "11-qian-duan-jia-gou.md",
+      "section": "深入探索",
+      "group": "架构设计",
+      "level": "..."
+    },
+    {
+      "slug": "12-ji-chu-she-shi-jia-gou",
+      "title": "基础设施架构",
+      "file": "12-ji-chu-she-shi-jia-gou.md",
+      "section": "深入探索",
+      "group": "架构设计",
+      "level": "..."
+    },
+    {
+      "slug": "13-zhi-shu-zhu-ce-biao",
+      "title": "指数注册表",
+      "file": "13-zhi-shu-zhu-ce-biao.md",
+      "section": "深入探索",
+      "group": "核心模块",
+      "level": "..."
+    },
+    {
+      "slug": "14-ji-suan-yin-qing",
+      "title": "计算引擎",
+      "file": "14-ji-suan-yin-qing.md",
+      "section": "深入探索",
+      "group": "核心模块",
+      "level": "..."
+    },
+    {
+      "slug": "15-zha-ge-chu-li-liu-shui-xian",
+      "title": "栅格处理流水线",
+      "file": "15-zha-ge-chu-li-liu-shui-xian.md",
+      "section": "深入探索",
+      "group": "核心模块",
+      "level": "..."
+    },
+    {
+      "slug": "16-ren-wu-diao-du-xi-tong",
+      "title": "任务调度系统",
+      "file": "16-ren-wu-diao-du-xi-tong.md",
+      "section": "深入探索",
+      "group": "核心模块",
+      "level": "..."
+    },
+    {
+      "slug": "17-zhi-neng-ti-jia-gou",
+      "title": "智能体架构",
+      "file": "17-zhi-neng-ti-jia-gou.md",
+      "section": "深入探索",
+      "group": "智能体系统",
+      "level": "..."
+    },
+    {
+      "slug": "18-yi-tu-shi-bie-yu-gui-hua",
+      "title": "意图识别与规划",
+      "file": "18-yi-tu-shi-bie-yu-gui-hua.md",
+      "section": "深入探索",
+      "group": "智能体系统",
+      "level": "..."
+    },
+    {
+      "slug": "19-ragzhi-shi-jian-suo",
+      "title": "RAG知识检索",
+      "file": "19-ragzhi-shi-jian-suo.md",
+      "section": "深入探索",
+      "group": "智能体系统",
+      "level": "..."
+    },
+    {
+      "slug": "20-zi-ding-yi-zhi-shu-guan-li",
+      "title": "自定义指数管理",
+      "file": "20-zi-ding-yi-zhi-shu-guan-li.md",
+      "section": "深入探索",
+      "group": "智能体系统",
+      "level": "..."
+    },
+    {
+      "slug": "21-zhuang-tai-guan-li",
+      "title": "状态管理",
+      "file": "21-zhuang-tai-guan-li.md",
+      "section": "深入探索",
+      "group": "前端开发",
+      "level": "..."
+    },
+    {
+      "slug": "22-di-tu-gong-zuo-tai",
+      "title": "地图工作台",
+      "file": "22-di-tu-gong-zuo-tai.md",
+      "section": "深入探索",
+      "group": "前端开发",
+      "level": "..."
+    },
+    {
+      "slug": "23-zhu-ti-yu-xiang-ying-shi-she-ji",
+      "title": "主题与响应式设计",
+      "file": "23-zhu-ti-yu-xiang-ying-shi-she-ji.md",
+      "section": "深入探索",
+      "group": "前端开发",
+      "level": "..."
+    },
+    {
+      "slug": "24-zu-jian-ku",
+      "title": "组件库",
+      "file": "24-zu-jian-ku.md",
+      "section": "深入探索",
+      "group": "前端开发",
+      "level": "..."
+    },
+    {
+      "slug": "25-rest-api",
+      "title": "REST API",
+      "file": "25-rest-api.md",
+      "section": "深入探索",
+      "group": "API与集成",
+      "level": "..."
+    },
+    {
+      "slug": "26-ogcjian-rong-jie-kou",
+      "title": "OGC兼容接口",
+      "file": "26-ogcjian-rong-jie-kou.md",
+      "section": "深入探索",
+      "group": "API与集成",
+      "level": "..."
+    },
+    {
+      "slug": "27-pygeoapicha-jian",
+      "title": "pygeoapi插件",
+      "file": "27-pygeoapicha-jian.md",
+      "section": "深入探索",
+      "group": "API与集成",
+      "level": "..."
+    },
+    {
+      "slug": "28-zi-chan-guan-li-xi-tong",
+      "title": "资产管理系统",
+      "file": "28-zi-chan-guan-li-xi-tong.md",
+      "section": "深入探索",
+      "group": "数据与存储",
+      "level": "..."
+    },
+    {
+      "slug": "29-miniodui-xiang-cun-chu",
+      "title": "MinIO对象存储",
+      "file": "29-miniodui-xiang-cun-chu.md",
+      "section": "深入探索",
+      "group": "数据与存储",
+      "level": "..."
+    },
+    {
+      "slug": "30-postgresqlchi-jiu-hua",
+      "title": "PostgreSQL持久化",
+      "file": "30-postgresqlchi-jiu-hua.md",
+      "section": "深入探索",
+      "group": "数据与存储",
+      "level": "..."
+    },
+    {
+      "slug": "31-fu-wu-fa-xian-yu-fu-zai-jun-heng",
+      "title": "服务发现与负载均衡",
+      "file": "31-fu-wu-fa-xian-yu-fu-zai-jun-heng.md",
+      "section": "深入探索",
+      "group": "运维与监控",
+      "level": "..."
+    },
+    {
+      "slug": "32-xing-neng-ji-zhun-ce-shi",
+      "title": "性能基准测试",
+      "file": "32-xing-neng-ji-zhun-ce-shi.md",
+      "section": "深入探索",
+      "group": "运维与监控",
+      "level": "..."
+    },
+    {
+      "slug": "33-ce-shi-ce-lue",
+      "title": "测试策略",
+      "file": "33-ce-shi-ce-lue.md",
+      "section": "深入探索",
+      "group": "运维与监控",
+      "level": "..."
+    },
+    {
+      "slug": "34-bian-ma-gui-fan",
+      "title": "编码规范",
+      "file": "34-bian-ma-gui-fan.md",
+      "section": "深入探索",
+      "group": "开发实践",
+      "level": "..."
+    },
+    {
+      "slug": "35-gong-xian-zhi-nan",
+      "title": "贡献指南",
+      "file": "35-gong-xian-zhi-nan.md",
+      "section": "深入探索",
+      "group": "开发实践",
+      "level": "..."
+    },
+    {
+      "slug": "36-gu-zhang-pai-cha",
+      "title": "故障排查",
+      "file": "36-gu-zhang-pai-cha.md",
+      "section": "深入探索",
+      "group": "开发实践",
+      "level": "..."
+    }
+  ]
+}

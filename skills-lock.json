@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ecosystem-primer": {
+      "source": "langchain-ai/langchain-skills",
+      "sourceType": "github",
+      "skillPath": "config/skills/ecosystem-primer/SKILL.md",
+      "computedHash": "792007c035568732166705ab3b2e01b29fff39f4630e974226e7e2ca5fea4352"
+    }
+  }
+}

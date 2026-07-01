@@ -1,0 +1,43 @@
+server:
+  bind:
+    host: 0.0.0.0
+    port: 5000
+  url: http://localhost:5000
+  mimetype: application/json
+  encoding: utf-8
+  language: zh-CN
+  pretty_print: true
+  limits:
+    default_items: 10
+    max_items: 100
+  map:
+    url: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+    attribution: OpenStreetMap contributors
+
+logging:
+  level: INFO
+
+metadata:
+  identification:
+    title: 植被指数OGC API服务
+    description: 30种植被指数动态处理服务
+    keywords: [vegetation, raster, OGC API Processes]
+    keywords_type: theme
+    terms_of_service: https://example.org/terms
+    url: https://example.org
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+  provider:
+    name: Canopy Lab
+    url: https://example.org
+  contact:
+    name: Internship Developer
+    email: developer@example.org
+    role: developer
+
+resources:
+  spectral-index:
+    type: process
+    processor:
+      name: app.pygeoapi_processor.SpectralIndexProcessor

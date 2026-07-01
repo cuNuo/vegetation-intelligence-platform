@@ -1,0 +1,495 @@
+"""平台REST与OGC API - Processes兼容路由。"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Annotated, Any
+
+from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile, status
+
+from app.api.schemas import (
+    AgentCustomIndexRequest,
+    AgentKnowledgeImportRequest,
+    AgentPlanRequest,
+    AgentResultInterpretRequest,
+    ChangeDetectionRequest,
+    ConfirmPlanRequest,
+    CustomFormulaRequest,
+    ExecutionRequest,
+    RasterInspectRequest,
+    RecipeRequest,
+    ZonalStatisticsRequest,
+)
+from app.core.indices import CORE_INDEX_COUNT, INDEX_REGISTRY, get_index
+from app.services.advanced_analysis import (
+    calculate_zonal_statistics,
+    detect_change,
+    validate_custom_expression,
+)
+from app.services.agent import vegetation_agent
+from app.services.agent_knowledge_store import (
+    is_enabled as is_agent_knowledge_store_enabled,
+)
+from app.services.agent_knowledge_store import (
+    save_knowledge_document,
+)
+from app.services.agent_session_store import is_enabled as is_agent_session_store_enabled
+from app.services.agent_tools import register_custom_index
+from app.services.assets import (
+    create_upload_url,
+    inspect_raster,
+    resolve_source,
+    save_uploaded_asset,
+)
+from app.services.custom_index_store import is_enabled
+from app.services.jobs import job_manager
+from app.services.planner import has_cuda
+from app.services.raster_pipeline import RasterTask
+from app.settings import settings
+
+router = APIRouter()
+custom_recipes: dict[str, dict[str, Any]] = {}
+
+
+@router.get("/api/indices")
+def list_indices(
+    category: str | None = Query(default=None),
+    band: str | None = Query(default=None),
+) -> dict[str, Any]:
+    items = list(INDEX_REGISTRY.values())
+    if category:
+        items = [item for item in items if category in item.categories]
+    if band:
+        items = [item for item in items if band in item.required_bands]
+    return {"total": len(items), "items": [item.public_metadata() for item in items]}
+
+
+@router.get("/api/indices/{index_id}")
+def index_detail(index_id: str) -> dict[str, Any]:
+    try:
+        return get_index(index_id).public_metadata()
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.get("/processes")
+def list_processes() -> dict[str, Any]:
+    return {
+        "processes": [
+            {
+                "id": item.id,
+                "title": item.name,
+                "description": item.description,
+                "version": "1.0.0",
+                "jobControlOptions": ["sync-execute", "async-execute", "dismiss"],
+            }
+            for item in INDEX_REGISTRY.values()
+        ]
+    }
+
+
+@router.get("/processes/{process_id}")
+def describe_process(process_id: str) -> dict[str, Any]:
+    try:
+        item = get_index(process_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return {
+        **item.public_metadata(),
+        "version": "1.0.0",
+        "jobControlOptions": ["sync-execute", "async-execute", "dismiss"],
+        "inputs": {
+            "source": {"schema": {"type": "object"}},
+            "bands": {"schema": {"type": "object"}},
+            "engine": {"schema": {"enum": ["auto", "numpy", "joblib", "torch"]}},
+        },
+        "outputs": {"result": {"schema": {"type": "object"}}},
+    }
+
+
+@router.post("/processes/{process_id}/execution")
+def execute_process(
+    process_id: str,
+    request: ExecutionRequest,
+    prefer: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    try:
+        indices = request.indices
+        if process_id != "batch":
+            get_index(process_id)
+            indices = [process_id]
+        task = _to_raster_task(request, indices)
+    except ValueError as error:
+        if "未知植被指数" in str(error):
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    if prefer and "respond-async" in prefer.lower():
+        record = job_manager.submit(task, request.priority)
+        return {
+            "jobID": record.id,
+            "status": record.status,
+            "location": f"/jobs/{record.id}",
+        }
+    try:
+        return {"status": "successful", "outputs": job_manager.execute_sync(task)}
+    except (ValueError, FileNotFoundError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/jobs")
+def list_jobs() -> dict[str, Any]:
+    return {"jobs": job_manager.list()}
+
+
+@router.get("/jobs/{job_id}")
+def get_job(job_id: str) -> dict[str, Any]:
+    try:
+        return job_manager.get(job_id).public()
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.get("/jobs/{job_id}/results")
+def get_job_results(job_id: str) -> dict[str, Any]:
+    try:
+        record = job_manager.get(job_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    if record.status != "successful":
+        raise HTTPException(status_code=409, detail=f"任务状态为{record.status}，结果尚不可用")
+    return record.result or {}
+
+
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_202_ACCEPTED)
+def cancel_job(job_id: str) -> dict[str, Any]:
+    try:
+        return job_manager.cancel(job_id).public()
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.post("/api/assets/inspect")
+def inspect_asset(request: RasterInspectRequest) -> dict[str, Any]:
+    try:
+        return inspect_raster(request.path)
+    except (FileNotFoundError, OSError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+
+@router.post("/api/assets/upload", status_code=status.HTTP_201_CREATED)
+async def upload_asset(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
+    try:
+        return await save_uploaded_asset(file)
+    except (ValueError, FileNotFoundError, OSError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+@router.post("/api/assets/upload-url")
+def upload_url(object_key: str = Query(min_length=1)) -> dict[str, str]:
+    try:
+        return create_upload_url(object_key)
+    except Exception as error:  # noqa: BLE001 - 转换外部服务错误
+        raise HTTPException(status_code=503, detail=f"MinIO不可用: {error}") from error
+
+
+@router.post("/api/agent/plan")
+async def create_agent_plan(request: AgentPlanRequest) -> dict[str, Any]:
+    return await vegetation_agent.create_plan(
+        request.message,
+        request.available_bands,
+        request.raster_width,
+        request.raster_height,
+        request.llm,
+        request.enable_web_search,
+        [document.model_dump() for document in request.external_documents],
+        request.custom_index.model_dump(by_alias=True) if request.custom_index else None,
+        request.session_id,
+    )
+
+
+@router.post("/api/agent/chat")
+async def chat_with_agent(request: AgentPlanRequest) -> dict[str, Any]:
+    plan = await create_agent_plan(request)
+    return {
+        "message": f"建议执行“{plan['title']}”。我已生成可编辑方案，确认后才会提交计算。",
+        "plan": plan,
+    }
+
+
+@router.post("/api/agent/plans/{plan_id}/confirm")
+def confirm_agent_plan(plan_id: str, request: ConfirmPlanRequest) -> dict[str, Any]:
+    try:
+        plan = vegetation_agent.get_plan(plan_id)
+        allowed_indices = {
+            item["id"]
+            for item in plan["recommendations"]
+            if item["executable"]
+        }
+        selected_indices = request.indices or plan["selectedIndices"]
+        invalid_indices = sorted(set(selected_indices) - allowed_indices)
+        if invalid_indices:
+            raise ValueError(f"执行单包含不可执行指数: {', '.join(invalid_indices)}")
+        execution_request = ExecutionRequest(
+            source=request.source,
+            indices=selected_indices,
+            bands=request.bands,
+            engine=request.engine or plan["engine"],
+            block_size=request.block_size,
+            priority=request.priority,
+        )
+        record = job_manager.submit(
+            _to_raster_task(execution_request, selected_indices),
+            request.priority,
+        )
+        return vegetation_agent.mark_confirmed(
+            plan_id,
+            record.id,
+            {
+                "indices": selected_indices,
+                "engine": execution_request.engine,
+                "blockSize": execution_request.block_size,
+                "priority": request.priority,
+            },
+        )
+    except (KeyError, ValueError, FileNotFoundError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/api/agent/interpret-results")
+async def interpret_agent_results(request: AgentResultInterpretRequest) -> dict[str, Any]:
+    return await vegetation_agent.interpret_results(
+        request.products,
+        request.user_goal,
+        request.llm,
+        request.session_id,
+    )
+
+
+@router.get("/api/agent/sessions/{session_id}/events")
+def get_agent_session_events(session_id: str) -> dict[str, Any]:
+    return {"items": vegetation_agent.get_session_events(session_id)}
+
+
+@router.post("/api/agent/knowledge", status_code=status.HTTP_201_CREATED)
+def import_agent_knowledge(request: AgentKnowledgeImportRequest) -> dict[str, Any]:
+    try:
+        document = save_knowledge_document(request.model_dump(by_alias=True))
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return document
+
+
+@router.post("/api/indices/custom", status_code=status.HTTP_201_CREATED)
+def create_custom_index(request: AgentCustomIndexRequest) -> dict[str, Any]:
+    try:
+        return register_custom_index(request.model_dump(by_alias=True))
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/api/recipes")
+def list_recipes() -> dict[str, Any]:
+    return {"items": vegetation_agent.recipes() + list(custom_recipes.values())}
+
+
+@router.post("/api/recipes", status_code=status.HTTP_201_CREATED)
+def create_recipe(request: RecipeRequest) -> dict[str, Any]:
+    for index_id in request.indices:
+        try:
+            get_index(index_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+    recipe_id = uuid.uuid4().hex
+    recipe = {"id": recipe_id, **request.model_dump()}
+    custom_recipes[recipe_id] = recipe
+    return recipe
+
+
+@router.post("/api/formulas/validate")
+def validate_formula(request: CustomFormulaRequest) -> dict[str, Any]:
+    try:
+        return validate_custom_expression(request.expression, request.allowed_bands)
+    except (SyntaxError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/api/analysis/change")
+def change_detection(request: ChangeDetectionRequest) -> dict[str, Any]:
+    try:
+        return detect_change(
+            request.before_path,
+            request.after_path,
+            request.output_path,
+            request.decrease_threshold,
+            request.increase_threshold,
+        )
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/api/analysis/zonal-statistics")
+def zonal_statistics(request: ZonalStatisticsRequest) -> dict[str, Any]:
+    try:
+        return calculate_zonal_statistics(request.raster_path, request.geojson)
+    except (KeyError, OSError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.get("/api/benchmarks/engines")
+def engine_benchmarks() -> dict[str, Any]:
+    return {
+        "thresholds": {
+            "numpyMaxPixels": 2_000_000,
+            "torchMinPixels": 20_000_000,
+            "torchMinIndices": 4,
+        },
+        "note": "实际基准需在目标机器执行backend/scripts/benchmark.py生成。",
+    }
+
+
+@router.get("/api/system/capabilities")
+def capabilities() -> dict[str, Any]:
+    custom_count = max(len(INDEX_REGISTRY) - CORE_INDEX_COUNT, 0)
+    return {
+        "cuda": has_cuda(),
+        "engines": ["numpy", "joblib", "torch"],
+        "indexCount": CORE_INDEX_COUNT,
+        "totalIndexCount": len(INDEX_REGISTRY),
+        "customIndexCount": custom_count,
+        "customIndexStorage": "postgresql" if is_enabled() else "memory",
+        "agentSessionStorage": "postgresql" if is_agent_session_store_enabled() else "memory",
+        "agentKnowledgeStorage": "postgresql" if is_agent_knowledge_store_enabled() else "memory",
+        "asyncJobs": True,
+        "objectStorage": "minio",
+        "agentMode": "langchain+rag+web-search+rules",
+    }
+
+
+@router.get("/api/system/taskbook-coverage")
+def taskbook_coverage() -> dict[str, Any]:
+    items = [
+        _coverage("30种植被指数", "covered", "app/core/indices.py", "内置30个统一IndexDefinition"),
+        _coverage(
+            "Rasterio分块窗口计算",
+            "covered",
+            "app/services/raster_pipeline.py",
+            "按窗口读取、计算和写入",
+        ),
+        _coverage("NumPy引擎", "covered", "app/engines/numpy_engine.py", "默认同步/小影像引擎"),
+        _coverage("Joblib并行引擎", "covered", "app/engines/joblib_engine.py", "CPU并行计算"),
+        _coverage("PyTorch CUDA引擎", "covered", "app/engines/torch_engine.py", "CUDA不可用时回退"),
+        _coverage("自动引擎选择", "covered", "app/services/planner.py", "按尺寸、指数数和CUDA选择"),
+        _coverage("OGC API - Processes", "covered", "app/api/routes.py", "/processes与/jobs接口"),
+        _coverage(
+            "pygeoapi处理器",
+            "covered",
+            "app/pygeoapi_processor.py",
+            "SpectralIndexProcessor",
+        ),
+        _coverage("同步执行", "covered", "app/api/routes.py", "POST /processes/{id}/execution"),
+        _coverage("异步执行", "covered", "app/services/jobs.py", "Prefer: respond-async与后台任务"),
+        _coverage("取消任务", "covered", "app/api/routes.py", "DELETE /jobs/{job_id}"),
+        _coverage("Celery + Redis", "covered", "app/celery_app.py", "部署模式任务队列"),
+        _coverage("MinIO存储", "covered", "app/services/assets.py", "上传输入与结果对象"),
+        _coverage("Nacos服务发现", "covered", "app/services/nacos.py", "API服务注册"),
+        _coverage("Traefik网关", "covered", "infra/traefik/traefik.yml", "网关配置"),
+        _coverage("Docker Compose", "covered", "compose.yml", "三服务、三Worker及基础设施"),
+        _coverage("Vue 3前端", "covered", "frontend/src/App.vue", "遥感工作台"),
+        _coverage(
+            "GeoTIFF上传与检查",
+            "covered",
+            "frontend/src/components/AssetToolbar.vue",
+            "上传和元数据检查",
+        ),
+        _coverage(
+            "指数实验室",
+            "covered",
+            "frontend/src/components/IndexCatalog.vue",
+            "指数浏览和检索",
+        ),
+        _coverage(
+            "任务中心",
+            "covered",
+            "frontend/src/components/JobProgressPanel.vue",
+            "轮询、结果、取消",
+        ),
+        _coverage(
+            "地图结果工作台",
+            "covered",
+            "frontend/src/components/MapWorkspace.vue",
+            "地图叠加和透明度",
+        ),
+        _coverage(
+            "统计图表",
+            "covered",
+            "frontend/src/components/StatisticsDashboard.vue",
+            "直方图和统计卡片",
+        ),
+        _coverage(
+            "变化检测",
+            "covered",
+            "app/services/advanced_analysis.py",
+            "/api/analysis/change",
+        ),
+        _coverage(
+            "区域统计",
+            "covered",
+            "app/services/advanced_analysis.py",
+            "/api/analysis/zonal-statistics",
+        ),
+        _coverage("自定义公式", "covered", "app/services/advanced_analysis.py", "AST白名单校验"),
+        _coverage("分析配方", "covered", "app/api/routes.py", "/api/recipes"),
+        _coverage(
+            "可复现实验清单",
+            "covered",
+            "app/services/raster_pipeline.py",
+            "manifest.json含哈希和环境",
+        ),
+        _coverage(
+            "智能分析代理",
+            "covered",
+            "app/services/agent.py",
+            "规则+LangChain+RAG+网络检索",
+        ),
+        _coverage(
+            "PostgreSQL自定义指数",
+            "covered",
+            "app/services/custom_index_store.py",
+            "自定义指数持久化",
+        ),
+        _coverage("基准测试", "covered", "scripts/benchmark.py", "多引擎误差与耗时微基准"),
+    ]
+    summary = {
+        "covered": sum(1 for item in items if item["status"] == "covered"),
+        "partial": sum(1 for item in items if item["status"] == "partial"),
+        "missing": sum(1 for item in items if item["status"] == "missing"),
+    }
+    return {"summary": summary, "items": items}
+
+
+def _coverage(requirement: str, status: str, location: str, evidence: str) -> dict[str, str]:
+    return {
+        "requirement": requirement,
+        "status": status,
+        "location": location,
+        "evidence": evidence,
+    }
+
+
+def _to_raster_task(request: ExecutionRequest, indices: list[str]) -> RasterTask:
+    source = resolve_source(request.source.object_key, request.source.local_path)
+    output_dir = settings.data_dir / "outputs" / uuid.uuid4().hex
+    return RasterTask(
+        source_path=str(source),
+        output_dir=str(output_dir),
+        indices=indices,
+        bands=request.bands,
+        engine=request.engine,
+        block_size=request.block_size,
+        parameters=request.parameters,
+        preview=request.preview,
+        statistics=request.statistics,
+    )

@@ -1,0 +1,127 @@
+import asyncio
+
+import pytest
+
+from app.core.indices import INDEX_REGISTRY
+from app.services.agent import vegetation_agent
+from app.services.agent_knowledge_store import save_knowledge_document
+
+
+def test_agent_recommends_growth_workflow() -> None:
+    plan = asyncio.run(
+        vegetation_agent.create_plan(
+            "我想看这片农田哪些区域长势不好",
+            ["blue", "green", "red", "nir"],
+            5000,
+            5000,
+        )
+    )
+    assert plan["intent"] == "growth"
+    assert plan["selectedIndices"] == ["ndvi", "evi", "gndvi"]
+    assert plan["requiresConfirmation"] is True
+    assert plan["canExecute"] is True
+    assert plan["sessionId"]
+    assert [event["eventType"] for event in plan["conversation"]] == ["question", "plan"]
+
+
+def test_agent_blocks_indices_with_missing_bands() -> None:
+    plan = asyncio.run(
+        vegetation_agent.create_plan(
+            "分析叶绿素和红边变化",
+            ["red", "nir"],
+        )
+    )
+    assert "gndvi" not in plan["selectedIndices"]
+    assert any(item["missingBands"] for item in plan["recommendations"])
+
+
+def test_agent_requires_confirmation_before_execution() -> None:
+    plan = asyncio.run(
+        vegetation_agent.create_plan("分析稀疏植被", ["blue", "red", "nir", "swir1"])
+    )
+    assert plan["status"] == "awaiting_confirmation"
+    assert "jobId" not in plan
+
+
+def test_agent_interpretation_appends_session_event() -> None:
+    plan = asyncio.run(
+        vegetation_agent.create_plan(
+            "我想看这片农田哪些区域长势不好",
+            ["blue", "green", "red", "nir"],
+        )
+    )
+    result = asyncio.run(
+        vegetation_agent.interpret_results(
+            [
+                {
+                    "index": "ndvi",
+                    "name": "NDVI",
+                    "statistics": {
+                        "validPixels": 100,
+                        "minimum": 0.1,
+                        "maximum": 0.8,
+                        "mean": 0.32,
+                        "median": 0.3,
+                        "standardDeviation": 0.12,
+                    },
+                }
+            ],
+            "长势诊断",
+            session_id=plan["sessionId"],
+        )
+    )
+    assert result["conversation"][-1]["eventType"] == "interpretation"
+
+
+def test_agent_exposes_trace_and_rag_hits() -> None:
+    plan = asyncio.run(
+        vegetation_agent.create_plan(
+            "干旱水分胁迫应该看哪些指数",
+            ["blue", "green", "red", "nir", "swir1"],
+            enable_web_search=False,
+        )
+    )
+    assert plan["agentMode"] == "langchain+rag+web-search+rules"
+    assert plan["knowledgeHits"]
+    assert any(step["id"] == "rag" for step in plan["trace"])
+
+
+def test_agent_rag_uses_imported_knowledge_document() -> None:
+    save_knowledge_document(
+        {
+            "title": "根腐病水分胁迫判读",
+            "content": "根腐病排查时需要联合NDMI水分指数和NDVI长势指数，重点看灌溉异常区域。",
+            "source": "pytest-knowledge",
+        }
+    )
+    plan = asyncio.run(
+        vegetation_agent.create_plan(
+            "根腐病和灌溉异常应该看什么指数",
+            ["blue", "green", "red", "nir", "swir1"],
+            enable_web_search=False,
+        )
+    )
+    assert any(hit["source"].startswith("knowledge-base") for hit in plan["knowledgeHits"])
+
+
+def test_agent_can_register_runtime_custom_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.services.agent_tools.save_custom_index", lambda _spec: False)
+    try:
+        plan = asyncio.run(
+            vegetation_agent.create_plan(
+                "我要新增一个近红外红光差异指数并执行",
+                ["red", "nir"],
+                enable_web_search=False,
+                custom_index={
+                    "id": "demo_diff",
+                    "name": "演示差异指数",
+                    "expression": "nir - red",
+                    "description": "用于演示运行期新增指数。",
+                },
+            )
+        )
+        assert plan["customIndex"]["id"] == "demo_diff"
+        assert plan["customIndex"]["storage"] in {"memory", "postgresql"}
+        assert plan["selectedIndices"][0] == "demo_diff"
+    finally:
+        INDEX_REGISTRY.pop("demo_diff", None)

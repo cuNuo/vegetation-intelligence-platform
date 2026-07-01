@@ -1,0 +1,17 @@
+
+  [32m[1mVITE[22m v7.3.5[39m  [2mready in [0m[1m586[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5174[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m21:02:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.vue?vue&type=style&index=0&scoped=7a7a37b1&lang.css[22m
+[2m21:03:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.vue?vue&type=style&index=0&scoped=7a7a37b1&lang.css[22m
+[2m21:04:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue?vue&type=style&index=0&scoped=20239eb9&lang.css[22m
+[2m21:04:19[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue?vue&type=style&index=0&scoped=984a806d&lang.css[22m
+[2m21:05:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssetToolbar.vue?vue&type=style&index=0&scoped=4b8834c0&lang.css[22m
+[2m21:05:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AppToolbar.vue, /src/components/AppToolbar.vue?vue&type=style&index=0&scoped=e567b970&lang.css[22m
+[2m21:08:12[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue?vue&type=style&index=0&scoped=20239eb9&lang.css[22m
+[2m21:09:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.vue?vue&type=style&index=0&scoped=7a7a37b1&lang.css[22m
+[2m21:11:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/assets/main.css[22m
+[2m21:12:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.vue?vue&type=style&index=0&scoped=7a7a37b1&lang.css[22m
+[2m21:12:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AppStatusBar.vue, /src/components/AppStatusBar.vue?vue&type=style&index=0&scoped=de6f8a4c&lang.css[22m
+[2m21:14:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AssetToolbar.vue?vue&type=style&index=0&scoped=4b8834c0&lang.css[22m

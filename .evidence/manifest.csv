@@ -1,0 +1,7 @@
+path,category,status,description
+.evidence/active/20260622-1700-植被指数智能分析平台.md,task-log,active,植被指数智能分析平台实施与验证记录
+output/playwright/platform-home.png,visual-qa,reference,无后端数据状态页面截图
+output/playwright/platform-agent-plan.png,visual-qa,passed,智能体生成方案后的完整页面截图
+output/playwright/platform-light-responsive.png,visual-qa,passed,日间主题与响应式工作台截图
+output/playwright/platform-dark-responsive.png,visual-qa,passed,夜间主题与响应式工作台截图
+.evidence/active/20260702-0045-服务启动与git维护.md,task-log,active,服务启动端口占用诊断、重启验证与git忽略边界维护

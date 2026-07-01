@@ -1,0 +1,96 @@
+[2m10:08:15[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/indices[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:15[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:15[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/system/capabilities[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:18[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/indices[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/system/capabilities[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:24[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:08:26[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:11:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/indices[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:11:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/system/capabilities[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:11:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:11:03[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:11:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /jobs[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)

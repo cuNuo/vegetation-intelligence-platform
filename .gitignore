@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+backend/data/
+backend/*.egg-info/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Environment and runtime
+.env
+*.log
+!.evidence/**/*.log
+%SystemDrive%/
+texput.log
+
+# Local generated artifacts
+data/
+output/
+.playwright-mcp/
+
+# Office temporary files
+~$*.docx
