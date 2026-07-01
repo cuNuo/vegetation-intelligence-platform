@@ -11,10 +11,13 @@ import type {
 
 const store = useWorkspaceStore()
 const api = usePlatformApi()
-const prompt = shallowRef('我想看这片农田哪些区域长势不好')
+const prompt = shallowRef('')
+const lastUserGoal = shallowRef('')
 const isThinking = shallowRef(false)
 const isInterpreting = shallowRef(false)
 const isConfigOpen = shallowRef(false)
+const isKnowledgeOpen = shallowRef(false)
+const isDetailsOpen = shallowRef(true)
 const isKnowledgeImporting = shallowRef(false)
 const errorMessage = shallowRef('')
 const knowledgeMessage = shallowRef('')
@@ -47,6 +50,7 @@ const knowledgeDraft = reactive({
   content: '',
   source: 'agent-upload',
 })
+const localConversation = shallowRef<AgentConversationEvent[]>([])
 
 const executableCount = computed(
   () => store.activePlan?.recommendations.filter((item) => item.executable).length ?? 0,
@@ -66,7 +70,8 @@ const activeJob = computed(() =>
 )
 const conversationEvents = computed<AgentConversationEvent[]>(() => {
   if (interpretation.value?.conversation?.length) return interpretation.value.conversation
-  return store.activePlan?.conversation ?? []
+  if (store.activePlan?.conversation?.length) return store.activePlan.conversation
+  return localConversation.value
 })
 const statusLine = computed(() => {
   if (isThinking.value) return '正在检索指数库、网络资料和可执行工具'
@@ -94,6 +99,20 @@ function eventTitle(event: AgentConversationEvent): string {
 function syncConversation(events?: AgentConversationEvent[]) {
   if (!events?.length || !store.activePlan) return
   store.activePlan.conversation = events
+}
+
+function appendLocalMessage(role: AgentConversationEvent['role'], content: string, eventType = 'question') {
+  localConversation.value = [
+    ...localConversation.value,
+    {
+      id: `${Date.now()}-${localConversation.value.length}`,
+      role,
+      eventType,
+      content,
+      payload: {},
+      createdAt: new Date().toISOString(),
+    },
+  ]
 }
 
 function resetExecutionSheet() {
@@ -146,11 +165,16 @@ async function readKnowledgeFile(event: Event) {
 }
 
 async function generatePlan() {
+  const message = prompt.value.trim()
+  if (!message) return
+  lastUserGoal.value = message
+  // 先把用户输入推进本地对话流，避免等待后端期间界面没有“消息已发送”的反馈。
+  appendLocalMessage('user', message)
   isThinking.value = true
   errorMessage.value = ''
   interpretation.value = null
   try {
-    const plan = await api.createPlan(prompt.value, store.asset.availableBands, {
+    const plan = await api.createPlan(message, store.asset.availableBands, {
       llm: currentLlmConfig(),
       enableWebSearch: enableWebSearch.value,
       customIndex: customIndexEnabled.value ? { ...customIndex } : null,
@@ -158,6 +182,8 @@ async function generatePlan() {
     })
     store.setActivePlan(plan)
     resetExecutionSheet()
+    if (!plan.conversation.length) appendLocalMessage('assistant', plan.summary, 'plan')
+    prompt.value = ''
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '方案生成失败'
   } finally {
@@ -214,7 +240,7 @@ watch(
             if (result.products[0]) store.setActiveProduct(result.products[0])
             interpretation.value = await api.interpretResults(
               result.products,
-              prompt.value,
+              lastUserGoal.value,
               currentLlmConfig(),
               store.activePlan?.sessionId,
             )
@@ -243,7 +269,7 @@ async function interpretResults() {
   try {
     interpretation.value = await api.interpretResults(
       interpretationProducts.value,
-      prompt.value,
+      lastUserGoal.value,
       currentLlmConfig(),
       store.activePlan?.sessionId,
     )
@@ -261,17 +287,20 @@ async function interpretResults() {
     <header class="agent-header">
       <div>
         <span class="eyebrow">AGRONOMY COPILOT</span>
-        <h2>植被分析智能体</h2>
+        <h2>对话</h2>
       </div>
-      <button class="config-button" type="button" @click="isConfigOpen = true">
-        {{ canUseLlm ? '模型已配置' : '配置模型' }}
-      </button>
+      <div class="header-actions">
+        <button class="config-button" type="button" @click="isKnowledgeOpen = true">知识库</button>
+        <button class="config-button" type="button" @click="isConfigOpen = true">
+          {{ canUseLlm ? '模型' : '配置' }}
+        </button>
+      </div>
     </header>
 
     <div class="conversation">
-      <div class="agent-message">
+      <div v-if="!conversationEvents.length" class="agent-message">
         <span>AI</span>
-        <p>描述你想识别的现象。我会先检索指数库和网络资料，再展示工具过程，确认后才提交计算。</p>
+        <p>输入你的判读目标，我会生成可确认的计算方案。</p>
       </div>
       <div class="agent-state">
         <strong>{{ statusLine }}</strong>
@@ -296,6 +325,33 @@ async function interpretResults() {
         <span>{{ canUseLlm ? `${llmConfig.provider} / ${llmConfig.model}` : '规则引擎兜底' }}</span>
         <span>{{ enableWebSearch ? '网络检索开启' : '仅本地RAG' }}</span>
       </div>
+      <button v-if="store.activePlan" class="details-toggle" type="button" @click="isDetailsOpen = !isDetailsOpen">
+        {{ isDetailsOpen ? '收起方案详情' : '展开方案详情' }}
+      </button>
+      <div class="prompt-box">
+        <textarea
+          v-model="prompt"
+          rows="3"
+          aria-label="分析需求"
+          placeholder="输入判读目标，例如：找出长势异常区域并解释原因"
+          @keydown.ctrl.enter.prevent="generatePlan"
+        />
+        <button :disabled="isThinking || prompt.length < 2" @click="generatePlan">
+          {{ isThinking ? '生成中…' : '发送' }}
+        </button>
+      </div>
+    </div>
+
+    <section v-if="store.activePlan && isDetailsOpen" class="plan-card">
+      <div class="plan-number">PLAN / {{ store.activePlan.id.slice(0, 6).toUpperCase() }}</div>
+      <h3>{{ store.activePlan.title }}</h3>
+      <p>{{ store.activePlan.summary }}</p>
+      <div class="agent-mode">
+        <span>{{ store.activePlan.agentMode }}</span>
+        <span>{{ store.activePlan.llmProvider }} / {{ store.activePlan.llmStatus }}</span>
+      </div>
+      <p class="llm-message">{{ store.activePlan.llmMessage }}</p>
+
       <label class="switch-row custom-toggle">
         <input v-model="customIndexEnabled" type="checkbox" />
         同时新建自定义指数
@@ -306,46 +362,6 @@ async function interpretResults() {
         <textarea v-model="customIndex.expression" rows="2" aria-label="自定义指数表达式" />
         <input v-model="customIndex.description" aria-label="自定义指数说明" placeholder="适用场景说明" />
       </div>
-      <div class="knowledge-import">
-        <div class="section-title compact">
-          <span>外部知识库</span>
-          <small>PostgreSQL RAG</small>
-        </div>
-        <input v-model="knowledgeDraft.title" aria-label="知识标题" placeholder="文档标题" />
-        <textarea
-          v-model="knowledgeDraft.content"
-          rows="3"
-          aria-label="指数说明文档内容"
-          placeholder="粘贴指数适用场景、限制、判读经验；或选择 .txt/.md 文件。"
-        />
-        <div class="knowledge-actions">
-          <label>
-            导入文件
-            <input type="file" accept=".txt,.md,.csv" @change="readKnowledgeFile" />
-          </label>
-          <button type="button" :disabled="isKnowledgeImporting" @click="importKnowledge">
-            {{ isKnowledgeImporting ? '导入中…' : '写入RAG' }}
-          </button>
-        </div>
-        <p v-if="knowledgeMessage">{{ knowledgeMessage }}</p>
-      </div>
-      <div class="prompt-box">
-        <textarea v-model="prompt" rows="3" aria-label="分析需求" />
-        <button :disabled="isThinking || prompt.length < 2" @click="generatePlan">
-          {{ isThinking ? '检索与推演中…' : '生成智能方案' }}
-        </button>
-      </div>
-    </div>
-
-    <section v-if="store.activePlan" class="plan-card">
-      <div class="plan-number">PLAN / {{ store.activePlan.id.slice(0, 6).toUpperCase() }}</div>
-      <h3>{{ store.activePlan.title }}</h3>
-      <p>{{ store.activePlan.summary }}</p>
-      <div class="agent-mode">
-        <span>{{ store.activePlan.agentMode }}</span>
-        <span>{{ store.activePlan.llmProvider }} / {{ store.activePlan.llmStatus }}</span>
-      </div>
-      <p class="llm-message">{{ store.activePlan.llmMessage }}</p>
 
       <div class="plan-metrics">
         <div>
@@ -501,6 +517,37 @@ async function interpretResults() {
 
     <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
 
+    <div v-if="isKnowledgeOpen" class="modal-backdrop" @click.self="isKnowledgeOpen = false">
+      <section class="config-modal" role="dialog" aria-modal="true" aria-label="外部知识库">
+        <header class="modal-header">
+          <div>
+            <span class="eyebrow">KNOWLEDGE BASE</span>
+            <h3>外部知识库</h3>
+          </div>
+          <button type="button" class="icon-button" @click="isKnowledgeOpen = false">×</button>
+        </header>
+        <div class="knowledge-import modal-knowledge">
+          <input v-model="knowledgeDraft.title" aria-label="知识标题" placeholder="文档标题" />
+          <textarea
+            v-model="knowledgeDraft.content"
+            rows="8"
+            aria-label="指数说明文档内容"
+            placeholder="粘贴指数适用场景、限制、判读经验；或选择 .txt/.md 文件。"
+          />
+          <div class="knowledge-actions">
+            <label>
+              导入文件
+              <input type="file" accept=".txt,.md,.csv" @change="readKnowledgeFile" />
+            </label>
+            <button type="button" :disabled="isKnowledgeImporting" @click="importKnowledge">
+              {{ isKnowledgeImporting ? '导入中…' : '写入RAG' }}
+            </button>
+          </div>
+          <p v-if="knowledgeMessage">{{ knowledgeMessage }}</p>
+        </div>
+      </section>
+    </div>
+
     <div v-if="isConfigOpen" class="modal-backdrop" @click.self="isConfigOpen = false">
       <section class="config-modal" role="dialog" aria-modal="true" aria-label="智能体模型配置">
         <header class="modal-header">
@@ -512,7 +559,7 @@ async function interpretResults() {
         </header>
         <label class="switch-row modal-switch">
           <input v-model="enableWebSearch" type="checkbox" />
-          默认启用网络检索，并与指数库RAG一起参与方案生成
+          联合网络检索
         </label>
         <div class="config-grid">
           <label>
@@ -545,6 +592,8 @@ async function interpretResults() {
 
 <style scoped>
 .agent-panel {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   height: 100%;
   min-height: 0;
@@ -592,6 +641,11 @@ async function interpretResults() {
   font-size: 9px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.header-actions {
+  display: flex;
+  gap: 7px;
 }
 
 .section-title {
@@ -667,6 +721,11 @@ async function interpretResults() {
 }
 
 .conversation {
+  display: flex;
+  flex: 1;
+  min-height: 260px;
+  flex-direction: column;
+  gap: 12px;
   padding: 20px 0;
 }
 
@@ -725,8 +784,11 @@ async function interpretResults() {
 
 .message-timeline {
   display: grid;
+  flex: 1;
   gap: 8px;
   margin-top: 12px;
+  overflow: auto;
+  padding-right: 3px;
 }
 
 .timeline-message {
@@ -779,7 +841,7 @@ async function interpretResults() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 12px;
+  margin-top: auto;
 }
 
 .runtime-summary span {
@@ -863,9 +925,12 @@ async function interpretResults() {
 }
 
 .prompt-box {
-  margin-top: 14px;
+  position: sticky;
+  bottom: 12px;
+  margin-top: 0;
   border: 1px solid var(--border-strong);
   background: var(--surface-0);
+  box-shadow: 0 -18px 34px color-mix(in srgb, var(--surface-1) 92%, transparent);
 }
 
 .prompt-box textarea {
@@ -899,6 +964,17 @@ async function interpretResults() {
 .secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
+}
+
+.details-toggle {
+  min-height: 34px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .secondary-button {
@@ -1327,6 +1403,10 @@ async function interpretResults() {
 }
 
 .modal-save {
+  margin-top: 16px;
+}
+
+.modal-knowledge {
   margin-top: 16px;
 }
 

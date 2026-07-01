@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import maplibregl, { type Map } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Product, UploadedAsset } from '@/types/platform'
@@ -19,6 +19,12 @@ const opacity = defineModel<number>('opacity', { default: 0.78 })
 const cursorCoordinates = shallowRef('将鼠标移入地图读取坐标')
 const activeBasemap = shallowRef<BasemapKey>('image')
 const compareMode = shallowRef<CompareMode>('both')
+const layerState = reactive({
+  basemap: true,
+  sourcePreview: true,
+  footprint: true,
+  result: true,
+})
 const TIANDITU_TOKEN = import.meta.env.VITE_TIANDITU_TOKEN ?? ''
 const hasTiandituToken = computed(() => TIANDITU_TOKEN.trim().length > 0)
 const TIANDITU_TILE =
@@ -62,14 +68,15 @@ const sourceBounds = computed<[number, number, number, number] | null>(() => {
   return isLngLat ? [west, south, east, north] : null
 })
 
-const shouldShowBasemap = computed(() => true)
 const hasBeforePreview = computed(() => Boolean(assetPreviewUrl.value && sourceBounds.value))
+const resultBounds = computed<[number, number, number, number] | null>(() => props.product?.bounds ?? null)
 const statusText = computed(() => {
-  if (props.product && previewUrl.value) return `正在查看 ${props.product.index.toUpperCase()} 结果`
-  if (sourceBounds.value) return '已读取导入影像空间范围，等待计算结果'
-  if (props.asset) return '影像缺少可用经纬度范围，已关闭底图叠加'
-  return '导入影像后显示空间范围和计算结果'
+  if (props.product && previewUrl.value) return `${props.product.index.toUpperCase()} 结果`
+  if (sourceBounds.value) return props.asset?.filename ?? '导入影像'
+  if (props.asset) return '影像缺少经纬度范围'
+  return '等待影像'
 })
+const sourceLayerLabel = computed(() => (hasBeforePreview.value ? '导入影像' : '影像范围'))
 
 function setLayerVisibility(layerId: string, visible: boolean) {
   const instance = map.value
@@ -80,8 +87,20 @@ function setLayerVisibility(layerId: string, visible: boolean) {
 function syncBasemapVisibility() {
   for (const layerId of allBasemapLayers) {
     const isActive = basemaps[activeBasemap.value].layers.includes(layerId)
-    setLayerVisibility(layerId, shouldShowBasemap.value && isActive)
+    setLayerVisibility(layerId, layerState.basemap && isActive)
   }
+}
+
+function shouldShowSourcePreview() {
+  return layerState.sourcePreview && compareMode.value !== 'after'
+}
+
+function shouldShowFootprint() {
+  return layerState.footprint && compareMode.value !== 'after'
+}
+
+function shouldShowResult() {
+  return layerState.result && compareMode.value !== 'before'
 }
 
 function syncSourceLayer() {
@@ -110,7 +129,7 @@ function syncSourceLayer() {
       type: 'raster',
       source: 'source-preview',
       paint: {
-        'raster-opacity': compareMode.value === 'after' ? 0 : 0.92,
+        'raster-opacity': shouldShowSourcePreview() ? 0.92 : 0,
         'raster-fade-duration': 0,
       },
     })
@@ -140,7 +159,7 @@ function syncSourceLayer() {
     source: 'source-footprint',
     paint: {
       'fill-color': '#58a6ff',
-      'fill-opacity': compareMode.value === 'after' || assetPreviewUrl.value ? 0 : 0.16,
+      'fill-opacity': shouldShowFootprint() && !assetPreviewUrl.value ? 0.16 : 0,
     },
   })
   instance.addLayer({
@@ -150,7 +169,7 @@ function syncSourceLayer() {
     paint: {
       'line-color': '#58a6ff',
       'line-width': 2,
-      'line-opacity': compareMode.value === 'after' ? 0 : 0.9,
+      'line-opacity': shouldShowFootprint() ? 0.9 : 0,
     },
   })
 }
@@ -177,25 +196,49 @@ function syncProductLayer() {
     type: 'raster',
     source: 'vegetation-result',
     paint: {
-      'raster-opacity': compareMode.value === 'before' ? 0 : opacity.value,
+      'raster-opacity': shouldShowResult() ? opacity.value : 0,
       'raster-fade-duration': 0,
     },
   })
 }
 
-function fitActiveBounds() {
+function visibleBoundsForMode(mode: CompareMode = compareMode.value) {
+  if (mode === 'before') return sourceBounds.value
+  if (mode === 'after') return resultBounds.value ?? sourceBounds.value
+  return resultBounds.value ?? sourceBounds.value
+}
+
+function fitBounds(bounds: [number, number, number, number] | null) {
   const instance = map.value
-  if (!instance?.isStyleLoaded()) return
-  const bounds = props.product?.bounds ?? sourceBounds.value
+  if (!instance) return
+  if (!instance.isStyleLoaded()) {
+    instance.once('idle', () => fitBounds(bounds))
+    return
+  }
   if (!bounds) return
   const [west, south, east, north] = bounds
-  instance.fitBounds(
-    [
-      [west, south],
-      [east, north],
-    ],
-    { padding: 72, duration: 900 },
-  )
+  const targetBounds: [[number, number], [number, number]] = [
+    [west, south],
+    [east, north],
+  ]
+  const options = { padding: 72, duration: 900, maxZoom: 14 }
+  const center: [number, number] = [(west + east) / 2, (south + north) / 2]
+  const isSmallFootprint = Math.max(Math.abs(east - west), Math.abs(north - south)) < 0.05
+  const moveToTarget = (duration: number) => {
+    if (isSmallFootprint) {
+      instance.easeTo({ center, zoom: 14, duration })
+      return
+    }
+    instance.fitBounds(targetBounds, { ...options, duration })
+  }
+  // MapLibre 的 fitBounds 是命令式外部状态；图像源刚添加时再补两次定位，避免被瓦片重绘时机吞掉。
+  moveToTarget(900)
+  window.requestAnimationFrame(() => moveToTarget(0))
+  window.setTimeout(() => moveToTarget(0), 300)
+}
+
+function fitActiveBounds(mode: CompareMode = compareMode.value) {
+  fitBounds(visibleBoundsForMode(mode))
 }
 
 function syncMapLayers() {
@@ -205,37 +248,75 @@ function syncMapLayers() {
   fitActiveBounds()
 }
 
+function showOnlyBasemap() {
+  layerState.basemap = true
+  layerState.sourcePreview = false
+  layerState.footprint = false
+  layerState.result = false
+}
+
+function showAnalysisLayers() {
+  layerState.sourcePreview = true
+  layerState.footprint = true
+  layerState.result = true
+  fitActiveBounds()
+}
+
+function setCompareMode(mode: CompareMode) {
+  compareMode.value = mode
+  fitActiveBounds(mode)
+}
+
 watch(() => props.product, syncMapLayers)
 watch(() => props.asset, syncMapLayers)
 watch(sourceBounds, syncMapLayers)
 watch(activeBasemap, syncBasemapVisibility)
+watch(layerState, () => {
+  syncBasemapVisibility()
+  if (map.value?.getLayer('source-preview')) {
+    map.value.setPaintProperty('source-preview', 'raster-opacity', shouldShowSourcePreview() ? 0.92 : 0)
+  }
+  if (map.value?.getLayer('source-footprint-fill')) {
+    map.value.setPaintProperty(
+      'source-footprint-fill',
+      'fill-opacity',
+      shouldShowFootprint() && !assetPreviewUrl.value ? 0.16 : 0,
+    )
+  }
+  if (map.value?.getLayer('source-footprint-line')) {
+    map.value.setPaintProperty('source-footprint-line', 'line-opacity', shouldShowFootprint() ? 0.9 : 0)
+  }
+  if (map.value?.getLayer('vegetation-result')) {
+    map.value.setPaintProperty('vegetation-result', 'raster-opacity', shouldShowResult() ? opacity.value : 0)
+  }
+})
 watch(compareMode, () => {
   if (map.value?.getLayer('source-footprint-fill')) {
     map.value.setPaintProperty(
       'source-footprint-fill',
       'fill-opacity',
-      compareMode.value === 'after' || assetPreviewUrl.value ? 0 : 0.16,
+      shouldShowFootprint() && !assetPreviewUrl.value ? 0.16 : 0,
     )
   }
   if (map.value?.getLayer('source-footprint-line')) {
     map.value.setPaintProperty(
       'source-footprint-line',
       'line-opacity',
-      compareMode.value === 'after' ? 0 : 0.9,
+      shouldShowFootprint() ? 0.9 : 0,
     )
   }
   if (map.value?.getLayer('vegetation-result')) {
     map.value.setPaintProperty(
       'vegetation-result',
       'raster-opacity',
-      compareMode.value === 'before' ? 0 : opacity.value,
+      shouldShowResult() ? opacity.value : 0,
     )
   }
   if (map.value?.getLayer('source-preview')) {
     map.value.setPaintProperty(
       'source-preview',
       'raster-opacity',
-      compareMode.value === 'after' ? 0 : 0.92,
+      shouldShowSourcePreview() ? 0.92 : 0,
     )
   }
 })
@@ -244,7 +325,7 @@ watch(opacity, (value) => {
     map.value.setPaintProperty(
       'vegetation-result',
       'raster-opacity',
-      compareMode.value === 'before' ? 0 : value,
+      shouldShowResult() ? value : 0,
     )
   }
 })
@@ -339,21 +420,55 @@ onBeforeUnmount(() => {
       <strong>天地图 Token 未配置</strong>
       <span>在本地 `.env` 设置 VITE_TIANDITU_TOKEN 后会显示在线底图</span>
     </div>
-    <div class="layer-control" aria-label="图层控制">
-      <div class="control-group">
-        <span>天地图底图</span>
+    <aside class="layer-control" aria-label="图层控制">
+      <header class="layer-panel-header">
+        <span>LAYERS</span>
+        <button type="button" @click="showOnlyBasemap">只看底图</button>
+      </header>
+      <div class="layer-row">
+        <label>
+          <input v-model="layerState.basemap" type="checkbox" />
+          <strong>天地图底图</strong>
+        </label>
         <div class="segmented-control">
           <button
             v-for="item in basemapOptions"
             :key="item.key"
             type="button"
             :class="{ active: activeBasemap === item.key }"
-            :disabled="!shouldShowBasemap"
+            :disabled="!layerState.basemap"
             @click="activeBasemap = item.key"
           >
             {{ item.label }}
           </button>
         </div>
+      </div>
+      <div class="layer-row">
+        <label>
+          <input v-model="layerState.sourcePreview" type="checkbox" :disabled="!sourceBounds" />
+          <strong>{{ sourceLayerLabel }}</strong>
+        </label>
+        <button type="button" class="zoom-button" :disabled="!sourceBounds" @click="fitBounds(sourceBounds)">
+          定位
+        </button>
+      </div>
+      <div class="layer-row">
+        <label>
+          <input v-model="layerState.result" type="checkbox" :disabled="!product" />
+          <strong>计算结果</strong>
+        </label>
+        <button type="button" class="zoom-button" :disabled="!resultBounds" @click="fitBounds(resultBounds)">
+          定位
+        </button>
+      </div>
+      <div class="layer-row">
+        <label>
+          <input v-model="layerState.footprint" type="checkbox" :disabled="!sourceBounds" />
+          <strong>范围框</strong>
+        </label>
+        <button type="button" class="zoom-button" :disabled="!sourceBounds" @click="fitBounds(sourceBounds)">
+          定位
+        </button>
       </div>
       <div class="control-group">
         <span>显示模式</span>
@@ -362,7 +477,7 @@ onBeforeUnmount(() => {
             type="button"
             :class="{ active: compareMode === 'before' }"
             :disabled="!sourceBounds"
-            @click="compareMode = 'before'"
+            @click="setCompareMode('before')"
           >
             计算前
           </button>
@@ -370,7 +485,7 @@ onBeforeUnmount(() => {
             type="button"
             :class="{ active: compareMode === 'after' }"
             :disabled="!product"
-            @click="compareMode = 'after'"
+            @click="setCompareMode('after')"
           >
             计算后
           </button>
@@ -378,7 +493,7 @@ onBeforeUnmount(() => {
             type="button"
             :class="{ active: compareMode === 'both' }"
             :disabled="!sourceBounds && !product"
-            @click="compareMode = 'both'"
+            @click="setCompareMode('both')"
           >
             对比
           </button>
@@ -388,32 +503,12 @@ onBeforeUnmount(() => {
         <span>结果透明度 {{ Math.round(opacity * 100) }}%</span>
         <input id="opacity" v-model.number="opacity" type="range" min="0" max="1" step="0.01" />
       </label>
-      <div class="layer-status">
-        <p>
-          <strong>导入影像</strong>
-          {{
-            hasBeforePreview
-              ? '已加载预览'
-              : sourceBounds
-                ? '已定位'
-                : asset
-                  ? '缺少可叠加坐标'
-                  : '未导入'
-          }}
-        </p>
-        <p>
-          <strong>计算结果</strong>
-          {{ previewUrl ? '已加载预览' : product ? '缺少预览' : '未选择' }}
-        </p>
-      </div>
-    </div>
+      <button type="button" class="restore-button" @click="showAnalysisLayers">恢复分析图层</button>
+    </aside>
     <div v-if="asset && !sourceBounds && !product" class="empty-state">
       <div class="scan-mark" />
       <p>影像缺少地理坐标</p>
       <span>当前影像无法和天地图对齐，请选择有 CRS 和 bounds 的 GeoTIFF</span>
-    </div>
-    <div v-else-if="sourceBounds && !hasBeforePreview" class="source-note">
-      已显示导入影像范围。上传影像像素预览需要后端生成 PNG 或瓦片。
     </div>
   </section>
 </template>
@@ -460,8 +555,7 @@ onBeforeUnmount(() => {
 .map-topline,
 .coordinate-chip,
 .layer-control,
-.token-warning,
-.source-note {
+.token-warning {
   position: absolute;
   z-index: 2;
   background: color-mix(in srgb, var(--surface-1) 88%, transparent);
@@ -528,12 +622,87 @@ onBeforeUnmount(() => {
 }
 
 .layer-control {
-  right: 18px;
-  bottom: 18px;
+  top: 76px;
+  left: 18px;
   display: grid;
-  width: min(360px, calc(100% - 36px));
-  gap: 12px;
+  width: min(310px, calc(100% - 36px));
+  gap: 10px;
   padding: 14px;
+}
+
+.layer-panel-header,
+.layer-row,
+.control-group,
+.opacity-control {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.layer-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.layer-panel-header button,
+.zoom-button,
+.restore-button {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.layer-panel-header button {
+  padding: 5px 8px;
+}
+
+.layer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.layer-row label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-1);
+  font-size: 13px;
+}
+
+.layer-row input {
+  accent-color: var(--acid);
+}
+
+.layer-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zoom-button {
+  padding: 5px 8px;
+}
+
+.restore-button {
+  min-height: 34px;
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-weight: 800;
+}
+
+.zoom-button:disabled,
+.restore-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .control-group > span,
@@ -593,16 +762,6 @@ onBeforeUnmount(() => {
 
 .layer-status strong {
   color: var(--text-1);
-}
-
-.source-note {
-  right: 18px;
-  bottom: 318px;
-  max-width: 360px;
-  padding: 10px 12px;
-  color: var(--text-2);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .empty-state {
@@ -666,19 +825,15 @@ onBeforeUnmount(() => {
   }
 
   .layer-control {
+    top: auto;
     right: 12px;
     bottom: 54px;
     left: 12px;
     width: auto;
+    max-height: 320px;
+    overflow: auto;
     gap: 7px;
     padding: 10px 12px;
-  }
-
-  .source-note {
-    right: 12px;
-    bottom: 258px;
-    left: 12px;
-    max-width: none;
   }
 
   .control-group > span,

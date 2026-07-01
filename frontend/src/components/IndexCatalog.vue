@@ -13,6 +13,10 @@ interface FormulaToken {
   value: string
   type: FormulaTokenType
 }
+interface FormulaFraction {
+  numerator: FormulaToken[]
+  denominator: FormulaToken[]
+}
 
 const bandTokens = new Set(['NIR', 'Red', 'Green', 'Blue', 'RedEdge', 'RE', 'SWIR1', 'SWIR2', 'NDVI'])
 const functionTokens = new Set(['sqrt', 'max', 'sign', 'abs'])
@@ -55,6 +59,53 @@ function tokenizeFormula(formula: string): FormulaToken[] {
     return { value, type: 'text' }
   })
 }
+
+function matchingOuterParens(expression: string) {
+  if (!expression.startsWith('(') || !expression.endsWith(')')) return false
+  let depth = 0
+  for (let index = 0; index < expression.length; index += 1) {
+    const char = expression[index]
+    if (char === '(') depth += 1
+    if (char === ')') depth -= 1
+    if (depth === 0 && index < expression.length - 1) return false
+  }
+  return depth === 0
+}
+
+function stripOuterParens(expression: string): string {
+  let current = expression.trim()
+  while (matchingOuterParens(current)) {
+    current = current.slice(1, -1).trim()
+  }
+  return current
+}
+
+function splitTopLevelDivision(formula: string): [string, string] | null {
+  let depth = 0
+  for (let index = 0; index < formula.length; index += 1) {
+    const char = formula[index]
+    if (char === '(') depth += 1
+    if (char === ')') depth -= 1
+    if (char === '/' && depth === 0) {
+      return [formula.slice(0, index), formula.slice(index + 1)]
+    }
+  }
+  return null
+}
+
+function fractionFormula(formula: string): FormulaFraction | null {
+  // 只拆最外层除号，避免把 sqrt(...) 或括号内部表达式误渲染成错误分式。
+  const parts = splitTopLevelDivision(formula)
+  if (!parts) return null
+  return {
+    numerator: tokenizeFormula(stripOuterParens(parts[0])),
+    denominator: tokenizeFormula(stripOuterParens(parts[1])),
+  }
+}
+
+function tokenLabel(token: FormulaToken) {
+  return token.value === '*' ? '×' : token.value
+}
 </script>
 
 <template>
@@ -85,14 +136,37 @@ function tokenizeFormula(formula: string): FormulaToken[] {
         <p>{{ item.description }}</p>
         <div class="formula-card" aria-label="植被指数公式">
           <span class="formula-label">FORMULA</span>
-          <div class="formula-line">
+          <div v-if="fractionFormula(item.formula)" class="formula-fraction">
+            <div class="formula-row numerator">
+              <span
+                v-for="(token, tokenIndex) in fractionFormula(item.formula)?.numerator"
+                :key="`${item.id}-num-${tokenIndex}-${token.value}`"
+                class="formula-symbol"
+                :class="`symbol-${token.type}`"
+              >
+                {{ tokenLabel(token) }}
+              </span>
+            </div>
+            <div class="fraction-rule" />
+            <div class="formula-row denominator">
+              <span
+                v-for="(token, tokenIndex) in fractionFormula(item.formula)?.denominator"
+                :key="`${item.id}-den-${tokenIndex}-${token.value}`"
+                class="formula-symbol"
+                :class="`symbol-${token.type}`"
+              >
+                {{ tokenLabel(token) }}
+              </span>
+            </div>
+          </div>
+          <div v-else class="formula-row formula-inline">
             <span
               v-for="(token, tokenIndex) in tokenizeFormula(item.formula)"
               :key="`${item.id}-${tokenIndex}-${token.value}`"
-              class="formula-token"
-              :class="`token-${token.type}`"
+              class="formula-symbol"
+              :class="`symbol-${token.type}`"
             >
-              {{ token.value }}
+              {{ tokenLabel(token) }}
             </span>
           </div>
         </div>
@@ -108,7 +182,6 @@ function tokenizeFormula(formula: string): FormulaToken[] {
             </dd>
           </div>
         </dl>
-        <small v-if="item.limitations.length">{{ item.limitations[0] }}</small>
       </article>
     </div>
   </section>
@@ -226,68 +299,87 @@ function tokenizeFormula(formula: string): FormulaToken[] {
 
 .formula-card {
   display: grid;
-  gap: 8px;
-  min-height: 72px;
-  padding: 11px;
+  min-height: 86px;
+  place-items: center;
+  gap: 6px;
+  padding: 12px 14px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 54%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 64%),
     var(--surface-0);
 }
 
 .formula-label {
+  justify-self: start;
   color: var(--acid);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
 }
 
-.formula-line {
-  display: flex;
+.formula-fraction {
+  display: inline-grid;
+  min-width: min(100%, 150px);
+  justify-items: center;
+}
+
+.formula-row {
+  display: inline-flex;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 2px;
 }
 
-.formula-token {
-  display: inline-grid;
-  min-height: 24px;
-  align-items: center;
-  padding: 2px 6px;
-  border: 1px solid transparent;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.2;
+.formula-inline {
+  min-height: 42px;
 }
 
-.token-band {
-  border-color: color-mix(in srgb, var(--acid) 45%, transparent);
-  background: color-mix(in srgb, var(--acid) 10%, transparent);
+.formula-symbol {
+  display: inline-block;
+  padding: 0 2px;
+  color: var(--text-1);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-style: italic;
+  line-height: 1.28;
+}
+
+.fraction-rule {
+  width: 100%;
+  min-width: 92px;
+  height: 1px;
+  margin: 3px 0;
+  background: color-mix(in srgb, var(--text-1) 72%, transparent);
+}
+
+.symbol-band {
   color: var(--acid);
   font-weight: 700;
 }
 
-.token-function {
-  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+.symbol-function {
   color: var(--accent-strong);
+  font-style: normal;
 }
 
-.token-parameter {
+.symbol-parameter {
   color: var(--warning);
   font-weight: 700;
 }
 
-.token-number {
+.symbol-number {
   color: var(--text-1);
+  font-style: normal;
 }
 
-.token-operator {
-  min-width: 20px;
-  padding-inline: 2px;
+.symbol-operator {
+  min-width: 12px;
   color: var(--text-3);
   text-align: center;
+  font-style: normal;
 }
 
 .index-grid p {

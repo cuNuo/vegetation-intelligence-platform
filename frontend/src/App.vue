@@ -91,10 +91,6 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
           <span class="kicker">REMOTE SENSING OPERATIONS DESK</span>
           <h1>植被指数智能分析工作台</h1>
         </div>
-        <p>
-          面向大幅遥感影像的分块计算、OGC标准服务与可解释方案推荐。
-          从数据检查、指数选择到异步结果回收保持同一条工作链。
-        </p>
       </section>
 
       <AssetToolbar />
@@ -133,11 +129,6 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
         />
       </Transition>
 
-      <footer class="document-footer">
-        <span>CANOPY LAB / 0.2.0</span>
-        <p>OGC API - Processes · Rasterio Window Pipeline · Explainable Agent Planning</p>
-        <span>MANUAL DELIVERY</span>
-      </footer>
     </main>
 
     <AppStatusBar
@@ -170,7 +161,7 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
   height: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: auto auto minmax(clamp(500px, calc(100dvh - 330px), 980px), auto) auto auto auto;
+  grid-template-rows: auto auto minmax(clamp(500px, calc(100dvh - 300px), 980px), auto) auto auto;
   gap: clamp(8px, 0.8vw, 14px);
   overflow: auto;
   padding: clamp(10px, 1.1vw, 22px);
@@ -178,9 +169,7 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
 
 .workspace-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.58fr);
   align-items: end;
-  gap: clamp(18px, 4vw, 84px);
   min-width: 0;
   padding: clamp(8px, 1.2vh, 18px) 0 clamp(4px, 0.8vh, 10px);
 }
@@ -196,13 +185,6 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
   font: 500 clamp(30px, 2.4vw, 48px) / 1.08 var(--font-display);
 }
 
-.workspace-heading p {
-  max-width: 680px;
-  margin: 0;
-  color: var(--text-2);
-  font-size: 15px;
-  line-height: 1.7;
-}
 
 .primary-grid {
   display: grid;
@@ -230,19 +212,6 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
   scroll-margin-top: 72px;
 }
 
-.document-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 18px 0 8px;
-  color: var(--text-3);
-  font: 12px var(--font-mono);
-}
-
-.document-footer p {
-  margin: 0;
-  text-align: center;
-}
 
 .panel-enter-active,
 .panel-leave-active {
@@ -267,12 +236,7 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
 
 @media (max-width: 1260px) {
   .workspace-heading {
-    grid-template-columns: 1fr;
     gap: 10px;
-  }
-
-  .workspace-heading p {
-    max-width: none;
   }
 }
 
@@ -297,13 +261,5 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
     padding-top: 12px;
   }
 
-  .document-footer {
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .document-footer p {
-    text-align: left;
-  }
 }
 </style>
