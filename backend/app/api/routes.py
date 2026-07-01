@@ -371,7 +371,12 @@ def capabilities() -> dict[str, Any]:
 @router.get("/api/system/taskbook-coverage")
 def taskbook_coverage() -> dict[str, Any]:
     items = [
-        _coverage("30种植被指数", "covered", "app/core/indices.py", "内置30个统一IndexDefinition"),
+        _coverage(
+            "35种植被指数",
+            "covered",
+            "app/core/indices.py",
+            "内置30个任务书指数，并补齐5个旧服务兼容指数",
+        ),
         _coverage(
             "Rasterio分块窗口计算",
             "covered",

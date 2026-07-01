@@ -22,7 +22,7 @@ class SourceReference(BaseModel):
 
 class ExecutionRequest(BaseModel):
     source: SourceReference
-    indices: list[str] = Field(min_length=1, max_length=30)
+    indices: list[str] = Field(min_length=1, max_length=35)
     bands: dict[str, int]
     engine: Literal["auto", "numpy", "joblib", "torch"] = "auto"
     block_size: int = Field(default=1024, alias="blockSize", ge=128, le=2048)
@@ -100,7 +100,7 @@ class AgentPlanRequest(BaseModel):
 class ConfirmPlanRequest(BaseModel):
     source: SourceReference
     bands: dict[str, int]
-    indices: list[str] | None = Field(default=None, min_length=1, max_length=30)
+    indices: list[str] | None = Field(default=None, min_length=1, max_length=35)
     engine: Literal["auto", "numpy", "joblib", "torch"] | None = None
     block_size: int = Field(default=1024, alias="blockSize", ge=128, le=2048)
     priority: int = Field(default=3, ge=1, le=5)
@@ -110,7 +110,7 @@ class ConfirmPlanRequest(BaseModel):
 
 class RecipeRequest(BaseModel):
     name: str = Field(min_length=2, max_length=100)
-    indices: list[str] = Field(min_length=1, max_length=30)
+    indices: list[str] = Field(min_length=1, max_length=35)
     description: str = Field(default="", max_length=500)
 
 

@@ -175,16 +175,17 @@ class RasterPipeline:
                 for current, window in enumerate(windows, start=1):
                     if is_cancelled and is_cancelled():
                         raise RuntimeError("任务已取消")
-                    arrays = {
-                        logical_name: source.read(
-                            task.bands[logical_name], window=window, out_dtype="float32"
-                        )
-                        for logical_name in required_bands
-                    }
-                    masks = [
-                        source.read_masks(task.bands[name], window=window) == 0
-                        for name in required_bands
-                    ]
+                    arrays: dict[str, np.ndarray] = {}
+                    masks: list[np.ndarray] = []
+                    for logical_name in required_bands:
+                        band_number = task.bands[logical_name]
+                        array = source.read(band_number, window=window, out_dtype="float32")
+                        invalid_mask = source.read_masks(band_number, window=window) == 0
+                        if source.nodata is not None:
+                            invalid_mask |= np.isclose(array, source.nodata)
+                        array[invalid_mask] = np.nan
+                        arrays[logical_name] = array
+                        masks.append(invalid_mask)
                     result = engine.compute(definitions, arrays, task.parameters)
                     actual_engine = result.engine
                     if result.fallback_reason:

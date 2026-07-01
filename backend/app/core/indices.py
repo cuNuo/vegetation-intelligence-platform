@@ -99,6 +99,18 @@ INDEX_DEFINITIONS = (
         limitations=COMMON_LIMITATIONS,
     ),
     IndexDefinition(
+        "bndvi",
+        "蓝色归一化植被指数",
+        "(NIR-Blue)/(NIR+Blue)",
+        ("nir", "blue"),
+        _normalized("nir", "blue"),
+        "使用蓝光替代红光的归一化指数，适合水体、阴影或蓝光响应场景的辅助判读。",
+        (-1, 1),
+        categories=("vegetation", "visible"),
+        recommendation_tags=("蓝光响应", "植被覆盖", "旧服务兼容"),
+        limitations=COMMON_LIMITATIONS + ("对大气散射和蓝光噪声更敏感",),
+    ),
+    IndexDefinition(
         "ndre",
         "归一化红边指数",
         "(NIR-RedEdge)/(NIR+RedEdge)",
@@ -109,6 +121,18 @@ INDEX_DEFINITIONS = (
         categories=("red-edge", "chlorophyll"),
         recommendation_tags=("叶绿素", "作物胁迫", "中后期长势"),
         limitations=COMMON_LIMITATIONS + ("传感器必须具有红边波段",),
+    ),
+    IndexDefinition(
+        "normb",
+        "标准化蓝指数",
+        "Blue/(Red+Green+Blue)",
+        ("blue", "red", "green"),
+        lambda xp, b, _p: safe_divide(xp, b["blue"], b["red"] + b["green"] + b["blue"]),
+        "RGB标准化蓝色分量，用于可见光影像色彩归一化和背景差异辅助分析。",
+        (0, 1),
+        categories=("visible", "color-normalized"),
+        recommendation_tags=("无人机RGB", "蓝光分量", "旧服务兼容"),
+        limitations=COMMON_LIMITATIONS + ("不包含近红外，不能单独代表植被活力",),
     ),
     IndexDefinition(
         "rvi",
@@ -122,6 +146,17 @@ INDEX_DEFINITIONS = (
         limitations=COMMON_LIMITATIONS,
     ),
     IndexDefinition(
+        "gr",
+        "绿红比值指数",
+        "Green/Red",
+        ("green", "red"),
+        _ratio("green", "red"),
+        "可见光绿红比值，适合RGB影像中绿色植被增强和快速筛查。",
+        categories=("visible",),
+        recommendation_tags=("无人机RGB", "冠层绿度", "旧服务兼容"),
+        limitations=COMMON_LIMITATIONS + ("对光照、白平衡和阴影敏感",),
+    ),
+    IndexDefinition(
         "dvi",
         "差值植被指数",
         "NIR-Red",
@@ -131,6 +166,36 @@ INDEX_DEFINITIONS = (
         categories=("vegetation",),
         recommendation_tags=("植被覆盖",),
         limitations=COMMON_LIMITATIONS + ("对辐射尺度敏感",),
+    ),
+    IndexDefinition(
+        "msr",
+        "改进简单比值植被指数",
+        "(NIR/Red-1)/sqrt(NIR/Red+1)",
+        ("nir", "red"),
+        lambda xp, b, _p: (
+            safe_divide(xp, safe_divide(xp, b["nir"], b["red"]) - 1, xp.sqrt(
+                xp.maximum(safe_divide(xp, b["nir"], b["red"]) + 1, 1e-6)
+            ))
+        ),
+        "对简单比值进行非线性压缩，降低高覆盖区域的比值膨胀影响。",
+        categories=("vegetation", "biomass"),
+        recommendation_tags=("高覆盖植被", "比值增强", "旧服务兼容"),
+        limitations=COMMON_LIMITATIONS + ("红光接近零时仍需谨慎解释",),
+    ),
+    IndexDefinition(
+        "rdvi",
+        "再归一化植被指数",
+        "(NIR-Red)/sqrt(NIR+Red)",
+        ("nir", "red"),
+        lambda xp, b, _p: safe_divide(
+            xp,
+            b["nir"] - b["red"],
+            xp.sqrt(xp.maximum(b["nir"] + b["red"], 1e-6)),
+        ),
+        "结合DVI和NDVI特征，兼顾植被覆盖差异和高覆盖区敏感性。",
+        categories=("vegetation", "biomass"),
+        recommendation_tags=("植被覆盖", "长势评估", "旧服务兼容"),
+        limitations=COMMON_LIMITATIONS + ("对输入反射率尺度一致性敏感",),
     ),
     IndexDefinition(
         "savi",
@@ -470,8 +535,8 @@ INDEX_DEFINITIONS = (
 INDEX_REGISTRY = {definition.id: definition for definition in INDEX_DEFINITIONS}
 CORE_INDEX_COUNT = len(INDEX_DEFINITIONS)
 
-if CORE_INDEX_COUNT != 30:
-    raise RuntimeError(f"注册表必须包含30种指数，当前为{len(INDEX_REGISTRY)}")
+if CORE_INDEX_COUNT < 30:
+    raise RuntimeError(f"注册表必须至少包含30种指数，当前为{len(INDEX_REGISTRY)}")
 
 
 def get_index(index_id: str) -> IndexDefinition:

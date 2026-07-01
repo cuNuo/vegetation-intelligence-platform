@@ -15,13 +15,13 @@ def test_health_and_index_catalog() -> None:
 
     response = client.get("/api/indices")
     assert response.status_code == 200
-    assert response.json()["total"] == 30
+    assert response.json()["total"] == 35
 
 
-def test_ogc_process_catalog_contains_30_processes() -> None:
+def test_ogc_process_catalog_contains_core_and_legacy_processes() -> None:
     response = client.get("/processes")
     assert response.status_code == 200
-    assert len(response.json()["processes"]) == 30
+    assert len(response.json()["processes"]) == 35
 
 
 def test_agent_plan_endpoint_is_safe_by_default() -> None:
@@ -206,8 +206,8 @@ def test_capabilities_match_task_book_requirements() -> None:
     response = client.get("/api/system/capabilities")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["indexCount"] == 30
-    assert payload["totalIndexCount"] >= 30
+    assert payload["indexCount"] == 35
+    assert payload["totalIndexCount"] >= 35
     assert payload["customIndexStorage"] in {"memory", "postgresql"}
     assert payload["engines"] == ["numpy", "joblib", "torch"]
     assert payload["asyncJobs"] is True

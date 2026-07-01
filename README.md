@@ -1,6 +1,6 @@
 # 植被指数智能分析平台
 
-面向遥感植被分析的实习项目，提供 30 种指数、Rasterio 分块计算、NumPy / Joblib / PyTorch CUDA 多引擎、OGC API - Processes 兼容接口、异步任务、智能方案推荐和 Vue 地图工作台。
+面向遥感植被分析的实习项目，提供 35 种指数（30 个任务书指数 + 5 个旧服务兼容指数）、Rasterio 分块计算、NumPy / Joblib / PyTorch CUDA 多引擎、OGC API - Processes 兼容接口、异步任务、智能方案推荐和 Vue 地图工作台。
 
 ## 核心能力
 
@@ -42,10 +42,10 @@ D:\miniconda\envs\giskeshe\python.exe -m uvicorn app.main:app --host 127.0.0.1 -
 ```powershell
 cd D:\Users\24658\Desktop\软件工程\实习\frontend
 npm install
-npm run dev -- --host 127.0.0.1 --port 5174
+npm run dev
 ```
 
-浏览器访问 `http://127.0.0.1:5174`。前端支持按钮选择 GeoTIFF、拖拽导入、批量队列和批量处理，不再要求用户手动输入后端绝对路径。默认波段映射为 Blue=1、Green=2、Red=3、RedEdge=4、NIR=5、SWIR1=6、SWIR2=7，可在前端状态或接口请求中调整。
+浏览器访问 `http://127.0.0.1:5174`。端口、host 和代理目标已固化在 `frontend/vite.config.js` 与 `frontend/package.json`，因此无需在命令行重复传参。前端支持按钮选择 GeoTIFF、拖拽导入、批量队列和批量处理，不再要求用户手动输入后端绝对路径。默认波段映射适配 6 波段测试数据：Blue=1、Green=2、Red=3、NIR=4、SWIR1=5、SWIR2=6，RedEdge 默认未映射为 0；可在前端状态或接口请求中调整。
 
 前端顶部工具栏可切换日间/夜间主题、隐藏智能体/任务/指数面板并跳转工作区；主题偏好保存在浏览器本地。底部状态栏持续显示 API、CUDA/CPU、队列和当前结果状态。地图和统计图会随窗口及面板尺寸自动重绘。
 

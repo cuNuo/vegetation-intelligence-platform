@@ -8,6 +8,16 @@ const props = defineProps<{
 
 const query = shallowRef('')
 const activeCategory = shallowRef('all')
+type FormulaTokenType = 'band' | 'function' | 'operator' | 'number' | 'parameter' | 'text'
+interface FormulaToken {
+  value: string
+  type: FormulaTokenType
+}
+
+const bandTokens = new Set(['NIR', 'Red', 'Green', 'Blue', 'RedEdge', 'RE', 'SWIR1', 'SWIR2', 'NDVI'])
+const functionTokens = new Set(['sqrt', 'max', 'sign', 'abs'])
+const operatorTokens = new Set(['+', '-', '*', '/', '^', '(', ')', ','])
+
 const categories = computed(() => [
   'all',
   ...new Set(props.indices.flatMap((item) => item.categories)),
@@ -19,7 +29,7 @@ const visibleIndices = computed(() => {
       activeCategory.value === 'all' || item.categories.includes(activeCategory.value)
     const keywordMatches =
       !keyword ||
-      `${item.id} ${item.name} ${item.description}`.toLowerCase().includes(keyword)
+      `${item.id} ${item.name} ${item.description} ${item.formula}`.toLowerCase().includes(keyword)
     return categoryMatches && keywordMatches
   })
 })
@@ -32,13 +42,26 @@ function rangeLabel(range: [number, number] | null) {
   if (!range) return '未限定'
   return `${range[0]} 至 ${range[1]}`
 }
+
+function tokenizeFormula(formula: string): FormulaToken[] {
+  return Array.from(
+    formula.matchAll(/RedEdge|SWIR[12]|NIR|Red|Green|Blue|NDVI|sqrt|max|sign|abs|[A-Z][A-Za-z0-9]*|\d+(?:\.\d+)?|[()+\-*/^,]/g),
+  ).map(([value]) => {
+    if (bandTokens.has(value)) return { value, type: 'band' }
+    if (functionTokens.has(value)) return { value, type: 'function' }
+    if (operatorTokens.has(value)) return { value, type: 'operator' }
+    if (/^\d/.test(value)) return { value, type: 'number' }
+    if (/^[A-Z]/.test(value)) return { value, type: 'parameter' }
+    return { value, type: 'text' }
+  })
+}
 </script>
 
 <template>
   <section class="catalog">
     <header>
       <div>
-        <span>INDEX REGISTRY / {{ indices.length || 30 }}</span>
+        <span>INDEX REGISTRY / {{ indices.length || 35 }}</span>
         <h2>植被指数库</h2>
       </div>
       <input v-model="query" type="search" placeholder="搜索指数、用途或公式" />
@@ -60,7 +83,19 @@ function rangeLabel(range: [number, number] | null) {
           <strong>{{ item.name }}</strong>
         </header>
         <p>{{ item.description }}</p>
-        <code>{{ item.formula }}</code>
+        <div class="formula-card" aria-label="植被指数公式">
+          <span class="formula-label">FORMULA</span>
+          <div class="formula-line">
+            <span
+              v-for="(token, tokenIndex) in tokenizeFormula(item.formula)"
+              :key="`${item.id}-${tokenIndex}-${token.value}`"
+              class="formula-token"
+              :class="`token-${token.type}`"
+            >
+              {{ token.value }}
+            </span>
+          </div>
+        </div>
         <dl>
           <div>
             <dt>范围</dt>
@@ -189,16 +224,70 @@ function rangeLabel(range: [number, number] | null) {
   white-space: nowrap;
 }
 
-.index-grid code {
-  display: block;
-  min-height: 44px;
-  padding: 10px;
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  background: var(--surface-0);
-  color: var(--text-2);
+.formula-card {
+  display: grid;
+  gap: 8px;
+  min-height: 72px;
+  padding: 11px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 54%),
+    var(--surface-0);
+}
+
+.formula-label {
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.formula-line {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.formula-token {
+  display: inline-grid;
+  min-height: 24px;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.2;
+}
+
+.token-band {
+  border-color: color-mix(in srgb, var(--acid) 45%, transparent);
+  background: color-mix(in srgb, var(--acid) 10%, transparent);
+  color: var(--acid);
+  font-weight: 700;
+}
+
+.token-function {
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--accent-strong);
+}
+
+.token-parameter {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.token-number {
+  color: var(--text-1);
+}
+
+.token-operator {
+  min-width: 20px;
+  padding-inline: 2px;
+  color: var(--text-3);
+  text-align: center;
 }
 
 .index-grid p {

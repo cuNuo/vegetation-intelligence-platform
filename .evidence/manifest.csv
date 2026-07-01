@@ -6,3 +6,4 @@ output/playwright/platform-light-responsive.png,visual-qa,passed,日间主题与
 output/playwright/platform-dark-responsive.png,visual-qa,passed,夜间主题与响应式工作台截图
 .evidence/active/20260702-0045-服务启动与git维护.md,task-log,active,服务启动端口占用诊断、重启验证与git忽略边界维护
 .evidence/active/20260702-0055-vite单配置与天地图空状态.md,task-log,active,Vite单配置、5174固定启动与天地图空状态布局修复
+.evidence/active/20260702-0115-公式展示35指数与全服务验证.md,task-log,active,公式展示优化、旧服务兼容指数补齐与bajiepart1全服务验证

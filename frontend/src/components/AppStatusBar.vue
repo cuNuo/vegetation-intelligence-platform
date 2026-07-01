@@ -42,7 +42,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
     <div class="status-group">
       <span>指数库</span>
       <strong>
-        {{ capabilities?.totalIndexCount ?? capabilities?.indexCount ?? 30 }} 个
+        {{ capabilities?.totalIndexCount ?? capabilities?.indexCount ?? 35 }} 个
       </strong>
       <span>{{ capabilities?.customIndexStorage ?? 'memory' }}</span>
       <span v-if="capabilities?.customIndexCount">+{{ capabilities.customIndexCount }} 自定义</span>

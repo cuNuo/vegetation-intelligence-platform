@@ -30,7 +30,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    description="30种植被指数、多引擎分块计算、OGC兼容任务接口和智能推荐代理。",
+    description="35种植被指数、多引擎分块计算、OGC兼容任务接口和智能推荐代理。",
     lifespan=lifespan,
 )
 app.add_middleware(

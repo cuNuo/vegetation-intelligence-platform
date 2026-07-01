@@ -16,9 +16,21 @@ BANDS = {
 }
 
 
-def test_registry_contains_exactly_30_indices() -> None:
-    assert len(INDEX_REGISTRY) == 30
-    assert {"ndvi", "osavi", "gndvi", "evi", "ndre", "ndmi"} <= INDEX_REGISTRY.keys()
+def test_registry_contains_taskbook_and_legacy_service_indices() -> None:
+    assert len(INDEX_REGISTRY) == 35
+    assert {
+        "ndvi",
+        "osavi",
+        "gndvi",
+        "evi",
+        "ndre",
+        "ndmi",
+        "bndvi",
+        "normb",
+        "gr",
+        "msr",
+        "rdvi",
+    } <= INDEX_REGISTRY.keys()
 
 
 def test_ndvi_matches_manual_formula() -> None:

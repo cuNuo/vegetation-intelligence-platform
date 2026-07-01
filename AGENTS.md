@@ -6,7 +6,7 @@ This repository implements the internship task book: a vegetation-index algorith
 
 ## Task Book Alignment
 
-Before major changes, consult `植被指数提取算法封装与Web服务实现实习任务书.docx`. Preserve these requirements: 30 vegetation indices, unified formula registry, Rasterio block/window processing, synchronous and asynchronous OGC API - Processes calls, Celery + Redis queues, MinIO artifact storage, Nacos + Traefik routing, Vue 3 visualization, and an agent that recommends plans but submits work only after user confirmation.
+Before major changes, consult `植被指数提取算法封装与Web服务实现实习任务书.docx`. Preserve these requirements: at least 30 task-book vegetation indices, unified formula registry, Rasterio block/window processing, synchronous and asynchronous OGC API - Processes calls, Celery + Redis queues, MinIO artifact storage, Nacos + Traefik routing, Vue 3 visualization, and an agent that recommends plans but submits work only after user confirmation.
 
 ## Build, Test, and Development Commands
 
@@ -21,7 +21,7 @@ Run the frontend:
 
 ```powershell
 cd frontend
-npm run dev -- --host 127.0.0.1 --port 5174
+npm run dev
 ```
 
 Quality checks:

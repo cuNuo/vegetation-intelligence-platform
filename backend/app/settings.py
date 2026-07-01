@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     service_port: int = 8000
     nacos_url: str | None = None
 
-    model_config = SettingsConfigDict(env_prefix="VIP_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="VIP_",
+        env_file=("../.env", ".env"),
+        extra="ignore",
+    )
 
 
 settings = Settings()

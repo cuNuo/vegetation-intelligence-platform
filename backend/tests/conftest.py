@@ -5,6 +5,17 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 
+from app.settings import settings
+
+
+@pytest.fixture(autouse=True)
+def isolate_external_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    """单元测试不依赖本机.env里的外部服务凭据，保证断言稳定。"""
+    monkeypatch.setattr(settings, "database_url", None)
+    monkeypatch.setattr(settings, "minio_enabled", False)
+    monkeypatch.setattr(settings, "openai_api_key", None)
+    monkeypatch.setattr(settings, "openai_base_url", None)
+
 
 @pytest.fixture
 def sample_raster(tmp_path: Path) -> Path:

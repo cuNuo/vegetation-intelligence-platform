@@ -25,10 +25,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       blue: 1,
       green: 2,
       red: 3,
-      red_edge: 4,
-      nir: 5,
-      swir1: 6,
-      swir2: 7,
+      red_edge: 0,
+      nir: 4,
+      swir1: 5,
+      swir2: 6,
     } as Record<string, number>,
   })
   const ui = reactive({
