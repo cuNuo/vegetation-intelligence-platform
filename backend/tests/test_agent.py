@@ -14,6 +14,7 @@ from app.services.agent_knowledge_store import (
     delete_knowledge_documents_by_source,
     save_knowledge_document,
 )
+from app.services.agent_tools import interpret_products
 
 
 def test_agent_recommends_growth_workflow() -> None:
@@ -84,6 +85,65 @@ def test_agent_interpretation_appends_session_event() -> None:
         )
     )
     assert result["conversation"][-1]["eventType"] == "interpretation"
+
+
+def test_agent_interprets_ndmi_and_msi_with_distinct_water_semantics() -> None:
+    """验证 NDMI 与 MSI 不再共用同一套水分判断语义。"""
+    result = interpret_products(
+        [
+            {
+                "index": "ndmi",
+                "statistics": {
+                    "mean": 0.82,
+                    "minimum": 0.19,
+                    "maximum": 0.95,
+                    "standardDeviation": 0.09,
+                },
+            },
+            {
+                "index": "msi",
+                "statistics": {
+                    "mean": 0.86,
+                    "minimum": 0.40,
+                    "maximum": 1.10,
+                    "standardDeviation": 0.04,
+                },
+            },
+        ],
+        "水分胁迫判读",
+    )
+
+    details = " ".join(item["detail"] for item in result["insights"])
+    assert "NDMI 水分信号异常偏高" in details
+    assert "MSI 越高通常表示水分胁迫越强" in details
+    assert "不宜直接判定为水分稳定" in details
+    assert result["nextActions"] and isinstance(result["nextActions"][0], str)
+
+
+def test_agent_normalizes_llm_next_actions_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 LLM 返回字符串 nextActions 时后端规整为列表，防止前端逐字渲染。"""
+    async def fake_invoke_langchain(*_args, **_kwargs) -> str:
+        return '{"summary":"模型摘要","nextActions":"复核地块边界和原始影像"}'
+
+    monkeypatch.setattr(vegetation_agent, "_invoke_langchain", fake_invoke_langchain)
+    result = asyncio.run(
+        vegetation_agent.interpret_results(
+            [
+                {
+                    "index": "ndvi",
+                    "statistics": {"mean": 0.62, "standardDeviation": 0.05},
+                }
+            ],
+            "长势诊断",
+            llm_config={
+                "baseUrl": "https://example.invalid/v1",
+                "token": "test-token",
+                "model": "test-model",
+            },
+        )
+    )
+
+    assert result["nextActions"] == ["复核地块边界和原始影像"]
 
 
 def test_agent_exposes_trace_and_rag_hits() -> None:

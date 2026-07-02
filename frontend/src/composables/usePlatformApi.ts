@@ -18,6 +18,7 @@ import type {
   SystemCapabilities,
   UploadedAsset,
 } from '@/types/platform'
+import { normalizeAgentInterpretation } from '@/utils/agentInterpretation'
 
 /** 发送 JSON 请求，统一检查 HTTP 状态并解析结构化错误。 */
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -318,7 +319,7 @@ export function usePlatformApi() {
     llm?: AgentLLMConfig | null,
     sessionId?: string | null,
   ): Promise<AgentResultInterpretation> {
-    return requestJson<AgentResultInterpretation>('/api/agent/interpret-results', {
+    const payload = await requestJson<unknown>('/api/agent/interpret-results', {
       method: 'POST',
       body: JSON.stringify({
         products,
@@ -327,6 +328,7 @@ export function usePlatformApi() {
         llm,
       }),
     })
+    return normalizeAgentInterpretation(payload)
   }
 
   /** 处理 getCapabilities 对应的组件交互或数据转换逻辑。 */

@@ -438,7 +438,10 @@ class VegetationAgent:
             )
             parsed = json.loads(re.search(r"\{.*\}", content, re.S).group())
             base["summary"] = parsed.get("summary") or base["summary"]
-            base["nextActions"] = parsed.get("nextActions") or base["nextActions"]
+            base["nextActions"] = _normalize_next_actions(
+                parsed.get("nextActions"),
+                base["nextActions"],
+            )
             base["llmStatus"] = "used"
         except (ImportError, KeyError, ValueError, AttributeError, json.JSONDecodeError) as error:
             base["llmStatus"] = "failed"
@@ -517,3 +520,14 @@ class VegetationAgent:
 
 
 vegetation_agent = VegetationAgent()
+
+
+def _normalize_next_actions(value: Any, fallback: list[str]) -> list[str]:
+    """把 LLM 返回的下一步建议规整为字符串列表，避免前端按字符渲染。"""
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else fallback
+    if isinstance(value, list):
+        items = [str(item).strip() for item in value if str(item).strip()]
+        return items or fallback
+    return fallback

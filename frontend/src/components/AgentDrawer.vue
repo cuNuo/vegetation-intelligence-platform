@@ -8,6 +8,7 @@
 import { computed, nextTick, onBeforeUnmount, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import { usePlatformApi } from '@/composables/usePlatformApi'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { normalizeAgentInterpretation } from '@/utils/agentInterpretation'
 import type {
   AgentConversationEvent,
   AgentExecutionSheet,
@@ -133,6 +134,10 @@ const conversationEvents = computed<AgentConversationEvent[]>(() => {
   return [...localOnly, ...persisted].sort(
     (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
   )
+})
+const resolvedInterpretation = computed(() => {
+  if (!interpretation.value) return null
+  return normalizeAgentInterpretation(interpretation.value)
 })
 const statusLine = computed(() => {
   if (isThinking.value) return '正在检索指数库、网络资料和可执行工具'
@@ -795,21 +800,26 @@ async function interpretResults() {
       </template>
     </section>
 
-    <section v-if="interpretation" class="insight-card">
-      <div class="plan-number">RESULT ADVICE</div>
-      <h3>统计判读意见</h3>
-      <p>{{ interpretation.summary }}</p>
+    <section v-if="resolvedInterpretation" class="insight-card">
+      <div class="insight-card-header">
+        <div>
+          <div class="plan-number">RESULT ADVICE</div>
+          <h3>统计判读意见</h3>
+        </div>
+        <span>{{ resolvedInterpretation.llmStatus === 'used' ? '模型增强' : '规则判读' }}</span>
+      </div>
+      <p>{{ resolvedInterpretation.summary }}</p>
       <article
-        v-for="insight in interpretation.insights"
+        v-for="insight in resolvedInterpretation.insights"
         :key="insight.title"
         :class="['insight-row', insight.severity]"
       >
         <strong>{{ insight.title }}</strong>
         <small>{{ insight.detail }}</small>
       </article>
-      <div class="next-actions">
+      <div v-if="resolvedInterpretation.nextActions.length" class="next-actions">
         <span>下一步</span>
-        <p v-for="action in interpretation.nextActions" :key="action">{{ action }}</p>
+        <p v-for="action in resolvedInterpretation.nextActions" :key="action">{{ action }}</p>
       </div>
     </section>
 
@@ -938,6 +948,14 @@ async function interpretResults() {
   overflow: auto;
   padding: 0 3px 14px 0;
   isolation: isolate;
+}
+
+.conversation,
+.thinking-panel,
+.plan-card,
+.insight-card,
+.error-message {
+  flex: 0 0 auto;
 }
 
 .eyebrow,
@@ -1750,11 +1768,35 @@ async function interpretResults() {
 
 .insight-card {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-1) 88%, var(--accent) 12%);
+}
+
+.insight-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.insight-card-header > div {
+  min-width: 0;
+}
+
+.insight-card-header > span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .insight-card h3 {
@@ -1762,21 +1804,25 @@ async function interpretResults() {
   font-family: var(--font-display);
   font-size: 19px;
   font-weight: 500;
-  overflow-wrap: anywhere;
+  line-height: 1.25;
+  overflow-wrap: break-word;
 }
 
 .insight-card > p {
   margin: 0;
   color: var(--muted-light);
-  font-size: 11px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.75;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .insight-row {
+  display: grid;
+  gap: 5px;
   min-width: 0;
   margin-top: 0;
-  padding: 9px;
+  padding: 10px 11px;
   border-left: 2px solid var(--acid);
   background: var(--surface-hover);
 }
@@ -1795,21 +1841,29 @@ async function interpretResults() {
 }
 
 .insight-row strong {
-  font-size: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: break-word;
 }
 
 .insight-row small,
 .next-actions p {
   min-width: 0;
-  margin: 5px 0 0;
+  margin: 0;
   color: var(--muted-light);
-  font-size: 9px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .next-actions {
-  margin-top: 12px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .next-actions span {
@@ -1817,6 +1871,21 @@ async function interpretResults() {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 800;
+}
+
+.next-actions p {
+  position: relative;
+  padding-left: 12px;
+}
+
+.next-actions p::before {
+  position: absolute;
+  top: 0.7em;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  background: var(--acid);
+  content: "";
 }
 
 .modal-backdrop {

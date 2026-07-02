@@ -297,9 +297,11 @@ def build_process_steps(plan: dict[str, Any]) -> list[dict[str, str]]:
 def interpret_products(products: list[dict[str, Any]], user_goal: str = "") -> dict[str, Any]:
     """基于产品统计信息给出规则化农学建议。"""
     insights: list[dict[str, str]] = []
+    index_ids: set[str] = set()
     for product in products:
         statistics = product.get("statistics") or {}
         index_id = str(product.get("index", "")).lower()
+        index_ids.add(index_id)
         mean = statistics.get("mean")
         deviation = statistics.get("standardDeviation")
         if mean is None:
@@ -311,13 +313,17 @@ def interpret_products(products: list[dict[str, Any]], user_goal: str = "") -> d
                 }
             )
             continue
-        severity, detail = _interpret_index(index_id, float(mean), deviation)
+        severity, detail = _interpret_index(
+            index_id,
+            float(mean),
+            _optional_float(deviation),
+            _optional_float(statistics.get("minimum")),
+            _optional_float(statistics.get("maximum")),
+        )
         insights.append(
             {"title": f"{index_id.upper()} 均值 {mean:.3f}", "severity": severity, "detail": detail}
         )
-    action = "优先复核波段映射、云阴影掩膜和低值斑块；必要时叠加地块边界做分区统计。"
-    if "干旱" in user_goal or "水分" in user_goal:
-        action = "建议把 NDMI/MSI 与灌溉记录、土壤水分和近期降雨一起核验。"
+    action = _next_action_from_context(index_ids, user_goal)
     return {
         "summary": _summary_from_insights(insights),
         "insights": insights,
@@ -419,29 +425,79 @@ def _clean_html(value: str) -> str:
     return html.unescape(re.sub(r"\s+", " ", text)).strip()
 
 
-def _interpret_index(index_id: str, mean: float, deviation: float | None) -> tuple[str, str]:
+def _optional_float(value: Any) -> float | None:
+    """把统计字段安全转换为可选浮点数。"""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _spread_sentence(deviation: float | None) -> str:
+    """根据标准差生成空间异质性描述。"""
+    if deviation is None:
+        return ""
+    level = "明显" if deviation > 0.18 else "可控"
+    return f" 标准差 {deviation:.3f}，空间差异{level}。"
+
+
+def _range_sentence(minimum: float | None, maximum: float | None) -> str:
+    """补充最小值和最大值，便于判读是否存在局部异常。"""
+    if minimum is None or maximum is None:
+        return ""
+    return f" 有效值范围 {minimum:.3f} 到 {maximum:.3f}。"
+
+
+def _interpret_index(
+    index_id: str,
+    mean: float,
+    deviation: float | None,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> tuple[str, str]:
     """完成模块内部的 interpret_index 辅助处理。"""
-    spread = (
-        ""
-        if deviation is None
-        else f" 标准差 {deviation:.3f}，空间差异{'较大' if deviation > 0.18 else '可控'}。"
-    )
+    spread = _spread_sentence(deviation)
+    value_range = _range_sentence(minimum, maximum)
     if index_id in {"ndvi", "gndvi", "evi", "savi", "osavi", "msavi"}:
         if mean < 0.25:
-            return "danger", f"植被活力偏低，需重点排查裸土、缺苗、病虫害或云阴影影响。{spread}"
+            return "danger", f"植被活力偏低，需重点排查裸土、缺苗、病虫害或云阴影影响。{value_range}{spread}"
         if mean < 0.55:
-            return "warning", f"植被活力中等，建议结合历史同期或地块分区继续判断。{spread}"
-        return "normal", f"整体长势较好，可关注局部低值斑块是否集中。{spread}"
-    if index_id in {"ndmi", "msi"}:
-        severity = "warning" if mean < 0 else "normal"
-        return severity, f"水分相关指数均值为 {mean:.3f}，需结合气象和土壤记录解释。{spread}"
-    return "normal", f"该指数统计处于可解释范围，建议与主指数联合判读。{spread}"
+            return "warning", f"植被活力中等，建议结合历史同期或地块分区继续判断。{value_range}{spread}"
+        return "normal", f"整体长势较好，可关注局部低值斑块是否集中。{value_range}{spread}"
+    if index_id == "ndmi":
+        if mean < 0:
+            return "danger", f"NDMI 均值低于 0，水分亏缺或裸土/阴影干扰风险较高。{value_range}{spread}"
+        if mean < 0.2:
+            return "warning", f"NDMI 处于偏低水分区间，建议优先核验灌溉、降雨和土壤含水量。{value_range}{spread}"
+        if mean > 0.75:
+            return "warning", f"NDMI 水分信号异常偏高，可能对应高湿、积水、云影或波段定标偏差，需要与原始影像和地块记录核对。{value_range}{spread}"
+        return "normal", f"NDMI 显示冠层水分状况总体可接受，仍需结合 MSI 和局部低值区判断。{value_range}{spread}"
+    if index_id == "msi":
+        if mean >= 1.2:
+            return "danger", f"MSI 越高通常表示水分胁迫越强；当前均值进入明显胁迫区间，应核查干旱、灌溉不足或 SWIR/NIR 波段映射。{value_range}{spread}"
+        if mean >= 0.7:
+            return "warning", f"MSI 越高通常表示水分胁迫越强；当前均值处于轻度压力或需复核区间，不宜直接判定为水分稳定。{value_range}{spread}"
+        return "normal", f"MSI 均值较低，暂未显示明显水分胁迫，但仍需与 NDMI、天气和地块管理记录联合解释。{value_range}{spread}"
+    return "normal", f"该指数统计处于可解释范围，建议与主指数联合判读。{value_range}{spread}"
 
 
 def _summary_from_insights(insights: list[dict[str, str]]) -> str:
     """完成模块内部的 summary_from_insights 辅助处理。"""
+    if not insights:
+        return "暂无可判读的统计结果，请先完成指数计算并确认有效像元。"
     if any(item["severity"] == "danger" for item in insights):
         return "统计结果提示存在需要优先核查的低值或异常区域。"
     if any(item["severity"] == "warning" for item in insights):
-        return "统计结果整体可用，但仍存在需要结合外部资料复核的信号。"
+        return "统计结果可用于初步判断，但部分指数进入需复核区间，应结合原始影像、地块记录和分区统计后再下结论。"
     return "统计结果未显示明显异常，可作为当前地块状态的基线参考。"
+
+
+def _next_action_from_context(index_ids: set[str], user_goal: str) -> str:
+    """根据指数组合和用户目标给出下一步核验建议。"""
+    if {"ndmi", "msi"} & index_ids or "干旱" in user_goal or "水分" in user_goal:
+        return "把 NDMI、MSI、近期降雨、灌溉记录和土壤水分传感器放在同一地块边界内复核，重点检查 MSI 高值与 NDMI 低值是否空间重合。"
+    if {"ndvi", "evi", "gndvi"} & index_ids or "长势" in user_goal:
+        return "优先叠加地块边界、云阴影掩膜和历史同期 NDVI/EVI，确认低值斑块是作物长势问题还是影像质量问题。"
+    return "优先复核波段映射、云阴影掩膜和异常斑块；必要时叠加地块边界做分区统计。"

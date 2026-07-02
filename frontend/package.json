@@ -7,6 +7,8 @@
     "dev": "vite --host 127.0.0.1 --port 5174",
     "build": "vue-tsc -b && vite build",
     "typecheck": "vue-tsc -b",
+    "test:unit": "vitest run --environment happy-dom",
+    "test:layout:agent": "node scripts/check-agent-layout.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -19,9 +21,13 @@
   "devDependencies": {
     "@types/node": "^22.15.32",
     "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.7.0",
+    "happy-dom": "^20.10.6",
+    "playwright": "^1.61.1",
     "typescript": "~5.8.3",
     "vite": "^7.0.0",
+    "vitest": "^4.1.9",
     "vue-tsc": "^2.2.10"
   }
 }
