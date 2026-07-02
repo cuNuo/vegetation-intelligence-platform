@@ -61,7 +61,7 @@ def search_index_knowledge(
             hits.append(
                 KnowledgeHit(
                     title=f"{definition.id.upper()} {definition.name}",
-                    content=f"{definition.formula}；{definition.description}",
+                    content=_definition_knowledge_content(definition),
                     source="index-registry",
                     score=score,
                 )
@@ -85,6 +85,25 @@ def search_index_knowledge(
         )
     hits.sort(key=lambda item: item.score, reverse=True)
     return [hit.public() for hit in hits[:limit]]
+
+
+def _definition_knowledge_content(definition: IndexDefinition) -> str:
+    """把内置指数定义展开为 Agent 可校验的结构化知识。"""
+    range_label = (
+        f"{definition.expected_range[0]} 到 {definition.expected_range[1]}"
+        if definition.expected_range
+        else "未限定，需结合场景和统计分布解释"
+    )
+    return "；".join(
+        [
+            f"公式={definition.formula}",
+            f"必需波段={', '.join(definition.required_bands)}",
+            f"期望范围={range_label}",
+            f"用途={definition.description}",
+            f"推荐场景={', '.join(definition.recommendation_tags) or '未标注'}",
+            f"限制={', '.join(definition.limitations) or '无'}",
+        ]
+    )
 
 
 async def search_web_knowledge(query: str, limit: int = 4) -> list[dict[str, Any]]:

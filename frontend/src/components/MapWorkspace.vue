@@ -29,6 +29,7 @@ const activeBasemap = shallowRef<BasemapKey>('image')
 const compareMode = shallowRef<CompareMode>('both')
 const sourceTilesInView = shallowRef(false)
 const resultTilesInView = shallowRef(false)
+const mapBearing = shallowRef(0)
 const seenSourceKeys = new Set<string>()
 let pendingSourceLocateKey = ''
 const layerState = reactive({
@@ -118,6 +119,26 @@ const resultRenderMode = computed(() => {
   if (previewUrl.value) return 'PNG 预览'
   return '未加载'
 })
+const resultLegend = computed(() => {
+  const product = props.product
+  if (!product) return null
+  const statistics = product.statistics
+  const minimum = statistics?.minimum ?? -1
+  const maximum = statistics?.maximum ?? 1
+  const center = statistics?.mean ?? (minimum + maximum) / 2
+  return {
+    title: product.index.toUpperCase(),
+    name: product.name,
+    minimum,
+    center,
+    maximum,
+  }
+})
+
+function formatLegendValue(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 'NA'
+  return Math.abs(value) >= 10 ? value.toFixed(1) : value.toFixed(2)
+}
 
 function setLayerVisibility(layerId: string, visible: boolean) {
   const instance = map.value
@@ -586,10 +607,15 @@ onMounted(() => {
   })
   instance.addControl(new maplibregl.NavigationControl(), 'top-right')
   instance.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
+  instance.addControl(new maplibregl.ScaleControl({ maxWidth: 140, unit: 'metric' }), 'bottom-right')
   instance.on('mousemove', (event) => {
     cursorCoordinates.value = `${event.lngLat.lng.toFixed(5)}, ${event.lngLat.lat.toFixed(5)}`
   })
+  instance.on('rotate', () => {
+    mapBearing.value = instance.getBearing()
+  })
   instance.on('moveend', () => {
+    mapBearing.value = instance.getBearing()
     refreshTileDemand()
   })
   instance.on('load', () => {
@@ -621,6 +647,22 @@ onBeforeUnmount(() => {
     <div class="coordinate-chip">
       <span>CURSOR</span>
       {{ cursorCoordinates }}
+    </div>
+    <div class="north-arrow" aria-label="指北针">
+      <div class="north-pointer" :style="{ transform: `rotate(${-mapBearing}deg)` }">N</div>
+      <span>北</span>
+    </div>
+    <div v-if="resultLegend" class="result-legend" aria-label="结果颜色条">
+      <div class="legend-head">
+        <strong>{{ resultLegend.title }}</strong>
+        <span>{{ resultLegend.name }}</span>
+      </div>
+      <div class="legend-ramp" />
+      <div class="legend-values">
+        <span>{{ formatLegendValue(resultLegend.minimum) }}</span>
+        <span>{{ formatLegendValue(resultLegend.center) }}</span>
+        <span>{{ formatLegendValue(resultLegend.maximum) }}</span>
+      </div>
     </div>
     <div v-if="!hasTiandituToken" class="token-warning">
       <strong>天地图 Token 未配置</strong>
@@ -769,8 +811,14 @@ onBeforeUnmount(() => {
   left: 18px;
 }
 
+.map-shell :deep(.maplibregl-ctrl-bottom-right) {
+  right: 18px;
+  bottom: 18px;
+}
+
 .map-shell :deep(.maplibregl-ctrl-group),
-.map-shell :deep(.maplibregl-ctrl-attrib) {
+.map-shell :deep(.maplibregl-ctrl-attrib),
+.map-shell :deep(.maplibregl-ctrl-scale) {
   border: 1px solid var(--border-strong);
   background: color-mix(in srgb, var(--surface-1) 88%, transparent);
   box-shadow: none;
@@ -784,6 +832,8 @@ onBeforeUnmount(() => {
 
 .map-topline,
 .coordinate-chip,
+.north-arrow,
+.result-legend,
 .layer-control,
 .token-warning {
   position: absolute;
@@ -832,6 +882,78 @@ onBeforeUnmount(() => {
 .coordinate-chip span {
   margin-right: 8px;
   color: var(--muted);
+}
+
+.north-arrow {
+  top: 76px;
+  right: 18px;
+  display: grid;
+  width: 48px;
+  height: 58px;
+  place-items: center;
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.north-pointer {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  clip-path: polygon(50% 0, 82% 100%, 50% 78%, 18% 100%);
+  background: var(--acid);
+  color: var(--surface-0);
+  font-weight: 900;
+  transform-origin: 50% 50%;
+}
+
+.north-arrow span {
+  margin-top: -4px;
+}
+
+.result-legend {
+  right: 18px;
+  bottom: 72px;
+  display: grid;
+  width: min(260px, calc(100% - 360px));
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.legend-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.legend-head strong {
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.legend-head span {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend-ramp {
+  height: 12px;
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(90deg, #26546c 0%, #6d8f55 46%, #b2f22a 100%);
+}
+
+.legend-values {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .token-warning {
@@ -1063,6 +1185,18 @@ onBeforeUnmount(() => {
     left: 12px;
   }
 
+  .north-arrow {
+    top: 70px;
+    right: 12px;
+  }
+
+  .result-legend {
+    right: 12px;
+    bottom: 386px;
+    left: 12px;
+    width: auto;
+  }
+
   .token-warning {
     right: 12px;
     bottom: 308px;
@@ -1105,6 +1239,11 @@ onBeforeUnmount(() => {
   .map-shell :deep(.maplibregl-ctrl-bottom-left) {
     bottom: 252px;
     left: 12px;
+  }
+
+  .map-shell :deep(.maplibregl-ctrl-bottom-right) {
+    right: 12px;
+    bottom: 12px;
   }
 }
 

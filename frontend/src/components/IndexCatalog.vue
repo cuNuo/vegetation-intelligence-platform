@@ -136,22 +136,34 @@ function tokenLabel(token: FormulaToken) {
         <p>{{ item.description }}</p>
         <div class="formula-card" aria-label="植被指数公式">
           <span class="formula-label">FORMULA</span>
-          <div v-if="fractionFormula(item.formula)" class="formula-fraction">
-            <div class="formula-row numerator">
-              <span
-                v-for="(token, tokenIndex) in fractionFormula(item.formula)?.numerator"
-                :key="`${item.id}-num-${tokenIndex}-${token.value}`"
-                class="formula-symbol"
-                :class="`symbol-${token.type}`"
-              >
-                {{ tokenLabel(token) }}
-              </span>
+          <div class="formula-viewport">
+            <div v-if="fractionFormula(item.formula)" class="formula-fraction">
+              <div class="formula-row numerator">
+                <span
+                  v-for="(token, tokenIndex) in fractionFormula(item.formula)?.numerator"
+                  :key="`${item.id}-num-${tokenIndex}-${token.value}`"
+                  class="formula-symbol"
+                  :class="`symbol-${token.type}`"
+                >
+                  {{ tokenLabel(token) }}
+                </span>
+              </div>
+              <div class="fraction-rule" />
+              <div class="formula-row denominator">
+                <span
+                  v-for="(token, tokenIndex) in fractionFormula(item.formula)?.denominator"
+                  :key="`${item.id}-den-${tokenIndex}-${token.value}`"
+                  class="formula-symbol"
+                  :class="`symbol-${token.type}`"
+                >
+                  {{ tokenLabel(token) }}
+                </span>
+              </div>
             </div>
-            <div class="fraction-rule" />
-            <div class="formula-row denominator">
+            <div v-else class="formula-row formula-inline">
               <span
-                v-for="(token, tokenIndex) in fractionFormula(item.formula)?.denominator"
-                :key="`${item.id}-den-${tokenIndex}-${token.value}`"
+                v-for="(token, tokenIndex) in tokenizeFormula(item.formula)"
+                :key="`${item.id}-${tokenIndex}-${token.value}`"
                 class="formula-symbol"
                 :class="`symbol-${token.type}`"
               >
@@ -159,16 +171,7 @@ function tokenLabel(token: FormulaToken) {
               </span>
             </div>
           </div>
-          <div v-else class="formula-row formula-inline">
-            <span
-              v-for="(token, tokenIndex) in tokenizeFormula(item.formula)"
-              :key="`${item.id}-${tokenIndex}-${token.value}`"
-              class="formula-symbol"
-              :class="`symbol-${token.type}`"
-            >
-              {{ tokenLabel(token) }}
-            </span>
-          </div>
+          <code class="formula-raw">{{ item.formula }}</code>
         </div>
         <dl>
           <div>
@@ -300,9 +303,9 @@ function tokenLabel(token: FormulaToken) {
 .formula-card {
   display: grid;
   min-height: 86px;
-  place-items: center;
   gap: 6px;
-  padding: 12px 14px;
+  align-content: start;
+  padding: 11px 12px 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
   background:
@@ -318,23 +321,35 @@ function tokenLabel(token: FormulaToken) {
   font-weight: 700;
 }
 
+.formula-viewport {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0 5px;
+  scrollbar-width: thin;
+}
+
 .formula-fraction {
   display: inline-grid;
-  min-width: min(100%, 150px);
+  min-width: max-content;
   justify-items: center;
+  padding-inline: 6px;
 }
 
 .formula-row {
   display: inline-flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 2px;
+  white-space: nowrap;
 }
 
 .formula-inline {
   min-height: 42px;
+  padding-inline: 6px;
 }
 
 .formula-symbol {
@@ -342,7 +357,7 @@ function tokenLabel(token: FormulaToken) {
   padding: 0 2px;
   color: var(--text-1);
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 18px;
+  font-size: clamp(15px, 1.05vw, 18px);
   font-style: italic;
   line-height: 1.28;
 }
@@ -353,6 +368,18 @@ function tokenLabel(token: FormulaToken) {
   height: 1px;
   margin: 3px 0;
   background: color-mix(in srgb, var(--text-1) 72%, transparent);
+}
+
+.formula-raw {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font: 10px/1.35 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .symbol-band {
