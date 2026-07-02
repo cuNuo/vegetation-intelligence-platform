@@ -1,7 +1,7 @@
 <!-- frontend/src/components/AgentDrawer.vue -->
 <!-- 文件说明：智能体对话、方案确认、知识导入和结果解读侧栏。 -->
 <script setup lang="ts">
-import { computed, nextTick, reactive, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import { usePlatformApi } from '@/composables/usePlatformApi'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type {
@@ -39,6 +39,8 @@ const interpretation = shallowRef<AgentResultInterpretation | null>(null)
 const observedJobId = shallowRef('')
 const executionMessage = shallowRef('')
 const thinkingSteps = shallowRef<AgentThinkingStep[]>([])
+const thinkingQueue: AgentThinkingStep[] = []
+let thinkingQueueTimer: number | null = null
 const llmConfig = reactive<AgentLLMConfig>({
   provider: 'openai-compatible',
   baseUrl: '',
@@ -68,6 +70,9 @@ const localConversation = shallowRef<AgentConversationEvent[]>([])
 
 const executableCount = computed(
   () => store.activePlan?.recommendations.filter((item) => item.executable).length ?? 0,
+)
+const executableRecommendations = computed(() =>
+  store.activePlan?.recommendations.filter((entry) => entry.executable) ?? [],
 )
 const visibleSources = computed(() => dedupeSources([
   ...(store.activePlan?.knowledgeHits ?? []),
@@ -196,6 +201,38 @@ function appendThinkingStep(title: string, detail: string, status: AgentTraceSte
     : [...thinkingSteps.value, step].slice(-8)
 }
 
+function enqueueThinkingStep(title: string, detail: string, status: AgentTraceStep['status'] = 'running') {
+  thinkingQueue.push({
+    id: `${Date.now()}-${thinkingQueue.length}`,
+    title,
+    detail,
+    status,
+  })
+  scheduleThinkingQueue()
+}
+
+function scheduleThinkingQueue() {
+  if (thinkingQueueTimer !== null) return
+  thinkingQueueTimer = window.setTimeout(flushThinkingQueue, 360)
+}
+
+function flushThinkingQueue() {
+  thinkingQueueTimer = null
+  const next = thinkingQueue.shift()
+  if (!next) return
+  appendThinkingStep(next.title, next.detail, next.status)
+  if (thinkingQueue.length) scheduleThinkingQueue()
+}
+
+function resetThinkingStream() {
+  thinkingSteps.value = []
+  thinkingQueue.splice(0)
+  if (thinkingQueueTimer !== null) {
+    window.clearTimeout(thinkingQueueTimer)
+    thinkingQueueTimer = null
+  }
+}
+
 function thinkingStepKey(title: string, detail: string) {
   return `${title.trim()}|${detail.replace(/\s+/g, ' ').trim()}`
 }
@@ -206,7 +243,7 @@ function extractErrorMessage(error: unknown, fallback: string) {
 
 function handlePlanStreamEvent(event: AgentStreamEvent) {
   if (event.event === 'thought') {
-    appendThinkingStep(
+    enqueueThinkingStep(
       typeof event.data.title === 'string' ? event.data.title : '思考过程',
       typeof event.data.detail === 'string' ? event.data.detail : '',
       ['done', 'running', 'warning', 'blocked'].includes(String(event.data.status))
@@ -217,7 +254,7 @@ function handlePlanStreamEvent(event: AgentStreamEvent) {
   }
   if (event.event === 'status' || event.event === 'done') {
     const message = typeof event.data.message === 'string' ? event.data.message : '智能体状态已更新'
-    appendThinkingStep(event.event === 'done' ? '完成' : '状态更新', message, event.event === 'done' ? 'done' : 'running')
+    enqueueThinkingStep(event.event === 'done' ? '完成' : '状态更新', message, event.event === 'done' ? 'done' : 'running')
     return
   }
   if (event.event === 'plan') {
@@ -341,7 +378,7 @@ async function generatePlan() {
   isThinking.value = true
   errorMessage.value = ''
   interpretation.value = null
-  thinkingSteps.value = []
+  resetThinkingStream()
   try {
     await api.createPlanStream(message, store.asset.availableBands, {
       llm: currentLlmConfig(),
@@ -444,6 +481,10 @@ watch(
     })
   },
 )
+
+onBeforeUnmount(() => {
+  resetThinkingStream()
+})
 
 async function interpretResults() {
   if (!interpretationProducts.value.length) {
@@ -559,75 +600,14 @@ async function interpretResults() {
         </div>
       </div>
 
-      <template v-if="isDetailsOpen">
-
-      <label class="switch-row custom-toggle">
-        <input v-model="customIndexEnabled" type="checkbox" />
-        同时新建自定义指数
-      </label>
-      <div v-if="customIndexEnabled" class="custom-index-box">
-        <input v-model="customIndex.id" aria-label="自定义指数ID" placeholder="指数ID，如 nd_custom" />
-        <input v-model="customIndex.name" aria-label="自定义指数名称" placeholder="指数名称" />
-        <textarea v-model="customIndex.expression" rows="2" aria-label="自定义指数表达式" />
-        <input v-model="customIndex.description" aria-label="自定义指数说明" placeholder="适用场景说明" />
-      </div>
-
-      <details class="trace-list">
-        <summary>
-          <span>运行过程</span>
-          <small>{{ visibleTraceSteps.length }} steps</small>
-        </summary>
-        <article v-for="step in visibleTraceSteps" :key="step.id" :class="['trace-item', step.status]">
-          <span class="trace-dot"></span>
-          <div>
-            <strong>{{ step.title }}</strong>
-            <small>{{ step.detail }}</small>
-          </div>
-        </article>
-      </details>
-
-      <div class="recommendations">
-        <article
-          v-for="item in store.activePlan.recommendations"
-          :key="item.id"
-          :class="{ blocked: !item.executable }"
-        >
-          <div class="index-badge">{{ item.id.toUpperCase() }}</div>
-          <div>
-            <strong>{{ item.name }}</strong>
-            <small>{{ item.reason }}</small>
-            <em v-if="item.missingBands.length">
-              缺少 {{ item.missingBands.join(' / ') }}
-            </em>
-          </div>
-        </article>
-      </div>
-
-      <details v-if="visibleSources.length" class="source-list">
-        <summary>
-          <span>检索来源</span>
-          <small>{{ visibleSources.length }} 条，已去重</small>
-        </summary>
-        <article v-for="source in visibleSources.slice(0, 3)" :key="`${source.source}-${source.title}-${source.content}`">
-          <strong>{{ source.title }}</strong>
-          <small>{{ source.source }}</small>
-          <p>{{ source.content }}</p>
-        </article>
-      </details>
-
-      <div v-if="store.activePlan.warnings.length" class="warning-box">
-        <span>质量提示</span>
-        <p v-for="warning in store.activePlan.warnings" :key="warning">{{ warning }}</p>
-      </div>
-
-      <div class="execution-sheet">
+      <div class="execution-sheet primary-execution">
         <div class="section-title compact">
-          <span>可编辑执行单</span>
-          <small>确认后提交</small>
+          <span>执行指数</span>
+          <small>{{ executionSheet.indices.length }} / {{ executableRecommendations.length }}</small>
         </div>
         <div class="execution-indices">
           <label
-            v-for="item in store.activePlan.recommendations.filter((entry) => entry.executable)"
+            v-for="item in executableRecommendations"
             :key="item.id"
           >
             <input
@@ -696,6 +676,68 @@ async function interpretResults() {
       >
         {{ isInterpreting ? '正在解读统计…' : '根据统计生成建议' }}
       </button>
+
+      <template v-if="isDetailsOpen">
+
+      <label class="switch-row custom-toggle">
+        <input v-model="customIndexEnabled" type="checkbox" />
+        同时新建自定义指数
+      </label>
+      <div v-if="customIndexEnabled" class="custom-index-box">
+        <input v-model="customIndex.id" aria-label="自定义指数ID" placeholder="指数ID，如 nd_custom" />
+        <input v-model="customIndex.name" aria-label="自定义指数名称" placeholder="指数名称" />
+        <textarea v-model="customIndex.expression" rows="2" aria-label="自定义指数表达式" />
+        <input v-model="customIndex.description" aria-label="自定义指数说明" placeholder="适用场景说明" />
+      </div>
+
+      <details class="trace-list">
+        <summary>
+          <span>运行过程</span>
+          <small>{{ visibleTraceSteps.length }} steps</small>
+        </summary>
+        <article v-for="step in visibleTraceSteps" :key="step.id" :class="['trace-item', step.status]">
+          <span class="trace-dot"></span>
+          <div>
+            <strong>{{ step.title }}</strong>
+            <small>{{ step.detail }}</small>
+          </div>
+        </article>
+      </details>
+
+      <div class="recommendations">
+        <article
+          v-for="item in store.activePlan.recommendations"
+          :key="item.id"
+          :class="{ blocked: !item.executable }"
+        >
+          <div class="index-badge">{{ item.id.toUpperCase() }}</div>
+          <div>
+            <strong>{{ item.name }}</strong>
+            <small>{{ item.reason }}</small>
+            <em v-if="item.missingBands.length">
+              缺少 {{ item.missingBands.join(' / ') }}
+            </em>
+          </div>
+        </article>
+      </div>
+
+      <details v-if="visibleSources.length" class="source-list">
+        <summary>
+          <span>检索来源</span>
+          <small>{{ visibleSources.length }} 条，已去重</small>
+        </summary>
+        <article v-for="source in visibleSources.slice(0, 3)" :key="`${source.source}-${source.title}-${source.content}`">
+          <strong>{{ source.title }}</strong>
+          <small>{{ source.source }}</small>
+          <p>{{ source.content }}</p>
+        </article>
+      </details>
+
+      <div v-if="store.activePlan.warnings.length" class="warning-box">
+        <span>质量提示</span>
+        <p v-for="warning in store.activePlan.warnings" :key="warning">{{ warning }}</p>
+      </div>
+
       </template>
     </section>
 
@@ -841,6 +883,7 @@ async function interpretResults() {
   min-height: 0;
   overflow: auto;
   padding-right: 3px;
+  isolation: isolate;
 }
 
 .eyebrow,
@@ -1016,10 +1059,13 @@ async function interpretResults() {
 .thinking-panel {
   display: grid;
   gap: 6px;
+  max-height: min(240px, 30dvh);
   min-height: 0;
+  overflow: auto;
   padding: 9px;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  contain: layout paint;
   position: relative;
   z-index: 1;
 }
@@ -1281,8 +1327,10 @@ async function interpretResults() {
   position: relative;
   z-index: 0;
   min-height: 0;
+  margin-top: 4px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+  background: var(--surface-1);
 }
 
 .plan-heading {
@@ -1551,6 +1599,10 @@ async function interpretResults() {
   padding: 10px;
   border: 1px solid var(--border-strong);
   background: var(--surface-0);
+}
+
+.primary-execution {
+  margin-top: 12px;
 }
 
 .execution-indices {

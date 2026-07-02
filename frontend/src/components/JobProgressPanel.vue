@@ -1,7 +1,7 @@
 <!-- frontend/src/components/JobProgressPanel.vue -->
 <!-- 文件说明：任务管理器列表、进度指标和多指数结果切换入口。 -->
 <script setup lang="ts">
-import type { JobRecord, RasterResult } from '@/types/platform'
+import type { JobRecord, Product, RasterResult } from '@/types/platform'
 
 defineProps<{
   jobs: JobRecord[]
@@ -65,6 +65,19 @@ function isProductActive(job: JobRecord, index: number, activeResult: RasterResu
   const product = job.result?.products?.[index]
   const activeProduct = activeResult?.products?.[activeProductIndex]
   return Boolean(product && activeProduct && product.path === activeProduct.path)
+}
+
+function productDownloadUrl(product: Product) {
+  const key = product.objectKey?.replaceAll('\\', '/').replace(/^\/+/, '')
+  if (key) return `/artifacts/${key}`
+  const normalized = product.path?.replaceAll('\\', '/')
+  const marker = '/data/'
+  const position = normalized.toLowerCase().lastIndexOf(marker)
+  return position >= 0 ? `/artifacts/${normalized.slice(position + marker.length)}` : ''
+}
+
+function productDownloadName(product: Product) {
+  return product.path.split(/[\\/]/).pop() ?? `${product.index.toUpperCase()}.tif`
 }
 </script>
 
@@ -137,17 +150,28 @@ function isProductActive(job: JobRecord, index: number, activeResult: RasterResu
           </button>
         </div>
         <div v-if="job.result?.products?.length" class="product-switcher" aria-label="任务结果指数">
-          <button
+          <div
             v-for="(product, index) in job.result.products"
             :key="`${job.id}-${product.index}`"
-            type="button"
-            :class="{
-              active: isProductActive(job, index, activeResult, activeProductIndex),
-            }"
-            @click="emit('selectJobProduct', job, index)"
+            class="product-action"
           >
-            {{ product.index.toUpperCase() }}
-          </button>
+            <button
+              type="button"
+              :class="{
+                active: isProductActive(job, index, activeResult, activeProductIndex),
+              }"
+              @click="emit('selectJobProduct', job, index)"
+            >
+              {{ product.index.toUpperCase() }}
+            </button>
+            <a
+              v-if="job.status === 'successful' && productDownloadUrl(product)"
+              :href="productDownloadUrl(product)"
+              :download="productDownloadName(product)"
+            >
+              导出TIF
+            </a>
+          </div>
         </div>
       </article>
     </div>
@@ -315,19 +339,35 @@ function isProductActive(job: JobRecord, index: number, activeResult: RasterResu
   margin-top: 8px;
 }
 
-.product-switcher button {
-  min-height: 28px;
-  padding: 4px 7px;
+.product-action {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  min-width: 0;
   border: 1px solid var(--border);
   background: var(--surface-1);
+}
+
+.product-switcher button,
+.product-switcher a {
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 0;
+  background: transparent;
   color: var(--text-2);
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.4;
+  text-decoration: none;
   cursor: pointer;
 }
 
 .product-switcher button.active {
-  border-color: var(--accent-strong);
+  background: var(--surface-hover);
+  color: var(--acid);
+}
+
+.product-switcher a {
+  border-left: 1px solid var(--border);
   color: var(--acid);
 }
 
