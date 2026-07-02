@@ -813,7 +813,7 @@ onBeforeUnmount(() => {
 
 .map-shell :deep(.maplibregl-ctrl-bottom-right) {
   right: 18px;
-  bottom: 18px;
+  bottom: 22px;
 }
 
 .map-shell :deep(.maplibregl-ctrl-group),
@@ -828,6 +828,19 @@ onBeforeUnmount(() => {
 .map-shell :deep(.maplibregl-ctrl button) {
   width: 34px;
   height: 34px;
+}
+
+.map-shell :deep(.maplibregl-ctrl-scale) {
+  min-width: 128px;
+  padding: 7px 12px 8px;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .map-topline,
@@ -885,7 +898,7 @@ onBeforeUnmount(() => {
 }
 
 .north-arrow {
-  top: 76px;
+  top: 196px;
   right: 18px;
   display: grid;
   width: 48px;
@@ -894,6 +907,7 @@ onBeforeUnmount(() => {
   color: var(--acid);
   font-family: var(--font-mono);
   font-size: 10px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 12%);
 }
 
 .north-pointer {
@@ -1186,7 +1200,7 @@ onBeforeUnmount(() => {
   }
 
   .north-arrow {
-    top: 70px;
+    top: 114px;
     right: 12px;
   }
 

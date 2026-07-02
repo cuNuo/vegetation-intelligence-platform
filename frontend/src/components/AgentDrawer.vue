@@ -1327,10 +1327,12 @@ async function interpretResults() {
   position: relative;
   z-index: 0;
   min-height: 0;
-  margin-top: 4px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-1);
+  margin: 8px 0 2px;
+  padding: 16px 14px;
+  border: 1px solid var(--border-strong);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-hover) 56%, transparent), transparent 46%),
+    var(--surface-1);
 }
 
 .plan-heading {
@@ -1380,7 +1382,7 @@ async function interpretResults() {
 .plan-metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  margin: 16px 0;
+  margin: 14px -14px 0;
   border-block: 1px solid var(--border);
 }
 
@@ -1595,7 +1597,7 @@ async function interpretResults() {
 }
 
 .execution-sheet {
-  margin: 14px 0;
+  margin: 14px -4px 0;
   padding: 10px;
   border: 1px solid var(--border-strong);
   background: var(--surface-0);

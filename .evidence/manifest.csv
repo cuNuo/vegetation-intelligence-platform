@@ -19,3 +19,4 @@ output/playwright/tif-tile-overlay-results.png,visual-qa,passed,bajiepart1输入
 output/playwright/validate-tif-tiles.cjs,test-artifact,passed,bajiepart1输入/输出TIF瓦片叠加端到端验证脚本
 .evidence/active/20260702-1216-上传地图任务Agent体验优化.md,task-log,active,上传分阶段反馈、地图渐进瓦片、任务管理器与Agent布局优化记录
 20260702-1216,上传地图任务Agent体验优化,task-log,frontend/upload-map-task-agent-progressive-ux,无,active,.evidence/active/20260702-1216-上传地图任务Agent体验优化.md
+20260702-1736,制图要素公式CI同步,task-log,frontend/upload-map-task-agent-progressive-ux,无,active,.evidence/active/20260702-1736-制图要素公式CI同步.md
