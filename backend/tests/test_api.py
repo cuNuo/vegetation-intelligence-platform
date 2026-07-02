@@ -200,6 +200,19 @@ def test_upload_asset_saves_geotiff_and_returns_metadata(sample_raster: Path) ->
     assert Path(payload["previewPath"]).is_file()
 
 
+def test_geotiff_tile_endpoint_renders_uploaded_tif(sample_raster: Path) -> None:
+    with sample_raster.open("rb") as file_obj:
+        upload = client.post(
+            "/api/assets/upload",
+            files={"file": ("sample.tif", file_obj, "image/tiff")},
+        )
+    object_key = upload.json()["objectKey"]
+    response = client.get("/api/tiles/0/0/0.png", params={"key": object_key})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG")
+
+
 def test_sync_process_executes_real_windowed_raster(sample_raster: Path) -> None:
     response = client.post(
         "/processes/ndvi/execution",

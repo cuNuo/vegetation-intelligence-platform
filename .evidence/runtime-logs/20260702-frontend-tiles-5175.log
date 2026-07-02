@@ -1,0 +1,14 @@
+
+> vegetation-intelligence-console@0.1.0 dev
+> vite --host 127.0.0.1 --port 5174 --host 127.0.0.1 --port 5175
+
+
+  [32m[1mVITE[22m v7.3.5[39m  [2mready in [0m[1m494[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5175[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m11:15:08[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m11:18:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m11:20:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m11:23:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m11:25:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m

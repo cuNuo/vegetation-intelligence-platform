@@ -175,12 +175,13 @@ async def save_uploaded_asset(file: Any) -> dict[str, Any]:
         "size": target.stat().st_size,
         "metadata": metadata,
         "previewPath": str(preview_path),
+        "previewObjectKey": f"previews/{preview_path.name}",
     }
 
 def upload_artifact(path: Path, object_key: str) -> str | None:
-    """部署模式上传派生产品；开发模式保留本地文件。"""
+    """部署模式上传派生产品；开发模式返回本地静态资源key。"""
     if not settings.minio_enabled:
-        return None
+        return object_key
     from minio import Minio
 
     client = Minio(

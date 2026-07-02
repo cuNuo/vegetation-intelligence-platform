@@ -8,7 +8,7 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.api.schemas import (
     AgentCustomIndexRequest,
@@ -48,6 +48,7 @@ from app.services.custom_index_store import is_enabled
 from app.services.jobs import job_manager
 from app.services.planner import has_cuda
 from app.services.raster_pipeline import RasterTask
+from app.services.tiles import render_geotiff_tile
 from app.settings import settings
 
 router = APIRouter()
@@ -196,6 +197,22 @@ def upload_url(object_key: str = Query(min_length=1)) -> dict[str, str]:
         return create_upload_url(object_key)
     except Exception as error:  # noqa: BLE001 - 转换外部服务错误
         raise HTTPException(status_code=503, detail=f"MinIO不可用: {error}") from error
+
+
+@router.get("/api/tiles/{z}/{x}/{y}.png")
+def geotiff_tile(
+    z: int,
+    x: int,
+    y: int,
+    key: Annotated[str, Query(min_length=1)],
+) -> Response:
+    try:
+        tile = render_geotiff_tile(key, z, x, y)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except Exception as error:  # noqa: BLE001 - 栅格渲染边界需要返回可诊断错误
+        raise HTTPException(status_code=422, detail=f"瓦片渲染失败: {error}") from error
+    return Response(content=tile, media_type="image/png")
 
 
 @router.post("/api/agent/plan")

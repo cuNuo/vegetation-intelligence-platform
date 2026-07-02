@@ -26,6 +26,7 @@ export interface UploadedAsset {
   size: number
   metadata: RasterMetadata
   previewPath?: string | null
+  previewObjectKey?: string | null
 }
 
 export interface IndexMetadata {
@@ -177,6 +178,8 @@ export interface Product {
   name: string
   path: string
   previewPath: string | null
+  objectKey?: string | null
+  previewObjectKey?: string | null
   bounds: [number, number, number, number]
   crs: string | null
   statistics: {

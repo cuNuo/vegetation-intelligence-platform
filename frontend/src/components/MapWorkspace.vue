@@ -43,40 +43,66 @@ const basemapOptions = Object.entries(basemaps).map(([key, item]) => ({
 }))
 const allBasemapLayers = Object.values(basemaps).flatMap((item) => item.layers)
 
-const previewUrl = computed(() => {
-  if (!props.product?.previewPath) return null
-  const normalized = props.product.previewPath.replaceAll('\\', '/')
+function artifactUrl(objectKey?: string | null, filePath?: string | null) {
+  const key = objectKey?.replaceAll('\\', '/').replace(/^\/+/, '')
+  if (key) return `/artifacts/${key}`
+  if (!filePath) return null
+  const normalized = filePath.replaceAll('\\', '/')
   const marker = '/data/'
   const position = normalized.toLowerCase().lastIndexOf(marker)
   return position >= 0 ? `/artifacts/${normalized.slice(position + marker.length)}` : null
-})
+}
 
-const assetPreviewUrl = computed(() => {
-  if (!props.asset?.previewPath) return null
-  const normalized = props.asset.previewPath.replaceAll('\\', '/')
-  const marker = '/data/'
-  const position = normalized.toLowerCase().lastIndexOf(marker)
-  return position >= 0 ? `/artifacts/${normalized.slice(position + marker.length)}` : null
-})
+function tileUrl(objectKey?: string | null) {
+  const key = objectKey?.replaceAll('\\', '/').replace(/^\/+/, '')
+  return key ? `/api/tiles/{z}/{x}/{y}.png?key=${encodeURIComponent(key)}` : null
+}
 
-const sourceBounds = computed<[number, number, number, number] | null>(() => {
-  const bounds = props.asset?.metadata?.geographicBounds ?? props.asset?.metadata?.bounds
+function lngLatBounds(bounds?: [number, number, number, number] | null) {
   if (!bounds || bounds.length !== 4) return null
   const [west, south, east, north] = bounds
   const isLngLat =
     west >= -180 && east <= 180 && south >= -90 && north <= 90 && west < east && south < north
-  return isLngLat ? [west, south, east, north] : null
+  return isLngLat ? bounds : null
+}
+
+const previewUrl = computed(() => {
+  if (!props.product) return null
+  return artifactUrl(props.product.previewObjectKey, props.product.previewPath)
+})
+const resultTileUrl = computed(() => tileUrl(props.product?.objectKey))
+
+const assetPreviewUrl = computed(() => {
+  if (!props.asset) return null
+  return artifactUrl(props.asset.previewObjectKey, props.asset.previewPath)
+})
+const assetTileUrl = computed(() => tileUrl(props.asset?.objectKey))
+
+const sourceBounds = computed<[number, number, number, number] | null>(() => {
+  return lngLatBounds(props.asset?.metadata?.geographicBounds ?? props.asset?.metadata?.bounds)
 })
 
-const hasBeforePreview = computed(() => Boolean(assetPreviewUrl.value && sourceBounds.value))
-const resultBounds = computed<[number, number, number, number] | null>(() => props.product?.bounds ?? null)
+const hasBeforePreview = computed(() =>
+  Boolean((assetTileUrl.value || assetPreviewUrl.value) && sourceBounds.value),
+)
+const resultBounds = computed<[number, number, number, number] | null>(() => lngLatBounds(props.product?.bounds))
 const statusText = computed(() => {
-  if (props.product && previewUrl.value) return `${props.product.index.toUpperCase()} 结果`
+  if (props.product && (resultTileUrl.value || previewUrl.value)) return `${props.product.index.toUpperCase()} 结果`
   if (sourceBounds.value) return props.asset?.filename ?? '导入影像'
   if (props.asset) return '影像缺少经纬度范围'
   return '等待影像'
 })
-const sourceLayerLabel = computed(() => (hasBeforePreview.value ? '导入影像' : '影像范围'))
+const sourceLayerLabel = computed(() => (assetTileUrl.value ? '导入影像 TIF' : hasBeforePreview.value ? '导入影像预览' : '影像范围'))
+const sourceRenderMode = computed(() => {
+  if (assetTileUrl.value) return 'TIF 瓦片'
+  if (assetPreviewUrl.value) return 'PNG 预览'
+  return '未加载'
+})
+const resultRenderMode = computed(() => {
+  if (resultTileUrl.value) return 'TIF 瓦片'
+  if (previewUrl.value) return 'PNG 预览'
+  return '未加载'
+})
 
 function setLayerVisibility(layerId: string, visible: boolean) {
   const instance = map.value
@@ -103,9 +129,26 @@ function shouldShowResult() {
   return layerState.result && compareMode.value !== 'before'
 }
 
-function syncSourceLayer() {
+function mapWhenStyleReady(callback: () => void) {
+  const instance = map.value
+  if (!instance) return null
+  if (!instance.isStyleLoaded()) {
+    instance.once('idle', callback)
+    return null
+  }
+  return instance
+}
+
+function orderAnalysisLayers() {
   const instance = map.value
   if (!instance?.isStyleLoaded()) return
+  if (instance.getLayer('vegetation-result')) instance.moveLayer('vegetation-result')
+  if (instance.getLayer('source-footprint-line')) instance.moveLayer('source-footprint-line')
+}
+
+function syncSourceLayer() {
+  const instance = mapWhenStyleReady(syncSourceLayer)
+  if (!instance) return
   if (instance.getLayer('source-preview')) instance.removeLayer('source-preview')
   if (instance.getSource('source-preview')) instance.removeSource('source-preview')
   if (instance.getLayer('source-footprint-line')) instance.removeLayer('source-footprint-line')
@@ -113,7 +156,24 @@ function syncSourceLayer() {
   if (instance.getSource('source-footprint')) instance.removeSource('source-footprint')
   if (!sourceBounds.value) return
   const [west, south, east, north] = sourceBounds.value
-  if (assetPreviewUrl.value) {
+  if (assetTileUrl.value) {
+    const resultLayerId = instance.getLayer('vegetation-result') ? 'vegetation-result' : undefined
+    instance.addSource('source-preview', {
+      type: 'raster',
+      tiles: [assetTileUrl.value],
+      tileSize: 256,
+    })
+    instance.addLayer({
+      id: 'source-preview',
+      type: 'raster',
+      source: 'source-preview',
+      paint: {
+        'raster-opacity': shouldShowSourcePreview() ? 0.92 : 0,
+        'raster-fade-duration': 0,
+      },
+    }, resultLayerId)
+  } else if (assetPreviewUrl.value) {
+    const resultLayerId = instance.getLayer('vegetation-result') ? 'vegetation-result' : undefined
     instance.addSource('source-preview', {
       type: 'image',
       url: assetPreviewUrl.value,
@@ -132,7 +192,7 @@ function syncSourceLayer() {
         'raster-opacity': shouldShowSourcePreview() ? 0.92 : 0,
         'raster-fade-duration': 0,
       },
-    })
+    }, resultLayerId)
   }
   instance.addSource('source-footprint', {
     type: 'geojson',
@@ -153,6 +213,7 @@ function syncSourceLayer() {
       },
     },
   })
+  const resultLayerId = instance.getLayer('vegetation-result') ? 'vegetation-result' : undefined
   instance.addLayer({
     id: 'source-footprint-fill',
     type: 'fill',
@@ -161,7 +222,7 @@ function syncSourceLayer() {
       'fill-color': '#58a6ff',
       'fill-opacity': shouldShowFootprint() && !assetPreviewUrl.value ? 0.16 : 0,
     },
-  })
+  }, resultLayerId)
   instance.addLayer({
     id: 'source-footprint-line',
     type: 'line',
@@ -172,25 +233,36 @@ function syncSourceLayer() {
       'line-opacity': shouldShowFootprint() ? 0.9 : 0,
     },
   })
+  orderAnalysisLayers()
 }
 
 function syncProductLayer() {
-  const instance = map.value
-  if (!instance?.isStyleLoaded()) return
+  const instance = mapWhenStyleReady(syncProductLayer)
+  if (!instance) return
   if (instance.getLayer('vegetation-result')) instance.removeLayer('vegetation-result')
   if (instance.getSource('vegetation-result')) instance.removeSource('vegetation-result')
-  if (!props.product || !previewUrl.value) return
-  const [west, south, east, north] = props.product.bounds
-  instance.addSource('vegetation-result', {
-    type: 'image',
-    url: previewUrl.value,
-    coordinates: [
-      [west, north],
-      [east, north],
-      [east, south],
-      [west, south],
-    ],
-  })
+  const tileSourceUrl = resultTileUrl.value
+  const imagePreviewUrl = previewUrl.value
+  if (!props.product || (!tileSourceUrl && !imagePreviewUrl) || !resultBounds.value) return
+  const [west, south, east, north] = resultBounds.value
+  if (tileSourceUrl) {
+    instance.addSource('vegetation-result', {
+      type: 'raster',
+      tiles: [tileSourceUrl],
+      tileSize: 256,
+    })
+  } else if (imagePreviewUrl) {
+    instance.addSource('vegetation-result', {
+      type: 'image',
+      url: imagePreviewUrl,
+      coordinates: [
+        [west, north],
+        [east, north],
+        [east, south],
+        [west, south],
+      ],
+    })
+  }
   instance.addLayer({
     id: 'vegetation-result',
     type: 'raster',
@@ -200,6 +272,7 @@ function syncProductLayer() {
       'raster-fade-duration': 0,
     },
   })
+  orderAnalysisLayers()
 }
 
 function visibleBoundsForMode(mode: CompareMode = compareMode.value) {
@@ -264,6 +337,7 @@ function showAnalysisLayers() {
 
 function setCompareMode(mode: CompareMode) {
   compareMode.value = mode
+  syncMapLayers()
   fitActiveBounds(mode)
 }
 
@@ -394,6 +468,9 @@ onMounted(() => {
   })
   instance.on('load', syncMapLayers)
   map.value = instance
+  if (import.meta.env.DEV) {
+    ;(window as Window & { __vipMap?: Map }).__vipMap = instance
+  }
   resizeObserver = new ResizeObserver(() => instance.resize())
   resizeObserver.observe(mapContainer.value)
 })
@@ -503,6 +580,16 @@ onBeforeUnmount(() => {
         <span>结果透明度 {{ Math.round(opacity * 100) }}%</span>
         <input id="opacity" v-model.number="opacity" type="range" min="0" max="1" step="0.01" />
       </label>
+      <div class="layer-status">
+        <p>
+          <span>源图层</span>
+          <strong>{{ sourceRenderMode }}</strong>
+        </p>
+        <p>
+          <span>结果图层</span>
+          <strong>{{ resultRenderMode }}</strong>
+        </p>
+      </div>
       <button type="button" class="restore-button" @click="showAnalysisLayers">恢复分析图层</button>
     </aside>
     <div v-if="asset && !sourceBounds && !product" class="empty-state">
