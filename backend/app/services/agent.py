@@ -1,3 +1,5 @@
+# backend/app/services/agent.py
+# 文件说明：植被分析 Agent 的意图识别、方案生成、确认与结果解读。
 """可解释、需确认的植被分析方案智能体。"""
 
 from __future__ import annotations
@@ -315,7 +317,9 @@ class VegetationAgent:
         system_prompt = (
             "你是遥感植被指数智能体，只返回JSON。字段intent只能取："
             + ",".join(schema["allowed"])
-            + "。可选字段reason用一句中文说明依据。"
+            + "。可选字段reason用一句中文说明依据。RAG资料仅用于辅助分类；"
+            "禁止引入用户问题中未明确提及的具体病害、虫害、灾害或成因，"
+            "若资料与问题不直接相关必须忽略。"
         )
         rag_context = "\n".join(
             f"- {hit['title']}: {hit['content']} 来源={hit['source']}" for hit in knowledge_hits[:8]

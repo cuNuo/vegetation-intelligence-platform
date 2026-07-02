@@ -1,10 +1,15 @@
+# backend/tests/test_agent.py
+# 文件说明：Agent 方案、RAG、会话、自定义指数和知识隔离回归测试。
 import asyncio
 
 import pytest
 
 from app.core.indices import INDEX_REGISTRY
 from app.services.agent import vegetation_agent
-from app.services.agent_knowledge_store import save_knowledge_document
+from app.services.agent_knowledge_store import (
+    delete_knowledge_documents_by_source,
+    save_knowledge_document,
+)
 
 
 def test_agent_recommends_growth_workflow() -> None:
@@ -87,21 +92,48 @@ def test_agent_exposes_trace_and_rag_hits() -> None:
 
 
 def test_agent_rag_uses_imported_knowledge_document() -> None:
-    save_knowledge_document(
-        {
-            "title": "根腐病水分胁迫判读",
-            "content": "根腐病排查时需要联合NDMI水分指数和NDVI长势指数，重点看灌溉异常区域。",
-            "source": "pytest-knowledge",
-        }
-    )
-    plan = asyncio.run(
-        vegetation_agent.create_plan(
-            "根腐病和灌溉异常应该看什么指数",
-            ["blue", "green", "red", "nir", "swir1"],
-            enable_web_search=False,
+    delete_knowledge_documents_by_source("pytest-knowledge")
+    try:
+        save_knowledge_document(
+            {
+                "title": "根腐病水分胁迫判读",
+                "content": "根腐病排查时需要联合NDMI水分指数和NDVI长势指数，重点看灌溉异常区域。",
+                "source": "pytest-knowledge",
+            }
         )
-    )
-    assert any(hit["source"].startswith("knowledge-base") for hit in plan["knowledgeHits"])
+        plan = asyncio.run(
+            vegetation_agent.create_plan(
+                "根腐病和灌溉异常应该看什么指数",
+                ["blue", "green", "red", "nir", "swir1"],
+                enable_web_search=False,
+            )
+        )
+        assert any(hit["source"].startswith("knowledge-base") for hit in plan["knowledgeHits"])
+    finally:
+        delete_knowledge_documents_by_source("pytest-knowledge")
+
+
+def test_agent_rag_does_not_inject_unmentioned_specific_disease() -> None:
+    delete_knowledge_documents_by_source("pytest-knowledge")
+    try:
+        save_knowledge_document(
+            {
+                "title": "根腐病水分胁迫判读",
+                "content": "根腐病排查时需要联合NDMI水分指数和NDVI长势指数。",
+                "source": "pytest-knowledge",
+            }
+        )
+        plan = asyncio.run(
+            vegetation_agent.create_plan(
+                "我想分析这片地的植被长势",
+                ["blue", "green", "red", "nir"],
+                enable_web_search=False,
+            )
+        )
+        assert all("根腐病" not in hit["title"] for hit in plan["knowledgeHits"])
+        assert all("根腐病" not in hit["content"] for hit in plan["knowledgeHits"])
+    finally:
+        delete_knowledge_documents_by_source("pytest-knowledge")
 
 
 def test_agent_can_register_runtime_custom_index(monkeypatch: pytest.MonkeyPatch) -> None:

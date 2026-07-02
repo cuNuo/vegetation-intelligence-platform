@@ -1,3 +1,5 @@
+# backend/app/services/agent_tools.py
+# 文件说明：指数知识检索、运行期指数注册与统计结果解释工具。
 """智能体工具：指数检索、运行期指数注册与统计解释。"""
 
 from __future__ import annotations
@@ -18,6 +20,62 @@ from app.services.agent_knowledge_store import search_persisted_knowledge
 from app.services.custom_index_store import load_custom_indices, save_custom_index
 
 ALLOWED_BANDS = ("blue", "green", "red", "red_edge", "nir", "swir1", "swir2")
+COMMON_AGRONOMY_KNOWLEDGE = (
+    (
+        "通用作物长势判读",
+        "长势 健康 覆盖 生物量 农田",
+        "长势判读优先联合NDVI、EVI和GNDVI；NDVI适合覆盖度，EVI缓解高覆盖饱和，"
+        "GNDVI补充叶绿素和氮素响应。结论应结合云阴影掩膜、地块边界和历史同期。",
+    ),
+    (
+        "叶绿素与氮素状态判读",
+        "叶绿素 氮素 黄化 红边 营养",
+        "叶绿素和氮素状态可联合GNDVI、NDRE、GCI和RECI；有红边波段时优先使用NDRE/RECI，"
+        "并结合生育期、施肥记录和叶片实测，避免把土壤背景或阴影误判为缺氮。",
+    ),
+    (
+        "水分与干旱胁迫判读",
+        "水分 干旱 缺水 灌溉 胁迫",
+        "水分胁迫可联合NDMI、MSI与NDVI；NDMI/MSI依赖SWIR，NDVI用于区分水分信号与整体长势下降。"
+        "需要叠加近期降雨、灌溉、土壤含水量和温度资料，不能仅凭指数诊断具体病害。",
+    ),
+    (
+        "积水与涝害辅助判读",
+        "积水 涝害 过湿 排水",
+        "积水或过湿区域常表现为水分指数异常并伴随长势下降，可联合NDMI、NDVI和地形低洼区分析；"
+        "需排除水体、阴影和灌溉时相差异，并通过现场或排水记录确认。",
+    ),
+    (
+        "稀疏植被与裸土背景",
+        "稀疏 裸土 苗期 土壤 荒漠",
+        "稀疏植被和苗期优先使用SAVI、OSAVI、MSAVI降低土壤背景影响；"
+        "可结合BSI识别裸土，但土壤湿度、颜色和耕作痕迹仍会改变结果。",
+    ),
+    (
+        "盐碱与土壤胁迫辅助判读",
+        "盐碱 盐渍化 土壤 胁迫",
+        "盐碱胁迫可表现为NDVI/SAVI降低和裸土特征增强，建议联合植被指数、BSI、土壤采样和地块历史；"
+        "遥感异常不能直接区分盐碱、缺水、缺肥或病害。",
+    ),
+    (
+        "倒伏与冠层结构异常",
+        "倒伏 冠层 结构 风灾",
+        "倒伏判读应结合指数变化、纹理、阴影方向和多时相对比；单一NDVI往往不足，"
+        "需要高分辨率影像、地块边界及灾前影像辅助确认。",
+    ),
+    (
+        "病虫害异常的遥感边界",
+        "病害 虫害 病虫害 斑块 异常",
+        "病虫害可能引起叶绿素、红边、水分和冠层结构异常，可联合NDRE、GNDVI、NDMI与NDVI筛查。"
+        "遥感只能定位疑似异常区，不能在缺少用户病害信息和现场证据时诊断具体病名。",
+    ),
+    (
+        "多时相变化监测",
+        "变化 两期 前后 退化 恢复",
+        "多时相监测应使用同传感器、同尺度、完成配准和辐射一致化的影像，比较NDVI/EVI/NDRE等指数差值；"
+        "需区分物候变化、收割、云阴影和真实退化。",
+    ),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +102,17 @@ def search_index_knowledge(
     """在内置指数库和外部文档片段中做轻量RAG召回。"""
     terms = _tokenize(query)
     hits: list[KnowledgeHit] = []
+    for title, keywords, content in COMMON_AGRONOMY_KNOWLEDGE:
+        score = _score(terms, f"{title} {keywords} {content}")
+        if score > 0:
+            hits.append(
+                KnowledgeHit(
+                    title=title,
+                    content=content,
+                    source="built-in-agronomy",
+                    score=score + 0.04,
+                )
+            )
     for definition in INDEX_REGISTRY.values():
         content = " ".join(
             [
@@ -306,6 +375,15 @@ def _tokenize(value: str) -> set[str]:
             "设施农业",
             "无人机",
             "rgb",
+            "病虫害",
+            "病害",
+            "虫害",
+            "灌溉",
+            "积水",
+            "涝害",
+            "盐碱",
+            "倒伏",
+            "冠层",
         )
         if term in value.lower()
     }

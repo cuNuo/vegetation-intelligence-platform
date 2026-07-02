@@ -1,3 +1,5 @@
+# backend/app/services/agent_knowledge_store.py
+# 文件说明：Agent 外部知识的内存/PostgreSQL 存储、检索与清理。
 """Agent外部知识库存储与召回。"""
 
 from __future__ import annotations
@@ -11,6 +13,16 @@ from app.settings import settings
 
 LOGGER = logging.getLogger(__name__)
 _MEMORY_DOCUMENTS: dict[str, dict[str, Any]] = {}
+SPECIFIC_DIAGNOSIS_TERMS = (
+    "根腐病",
+    "白粉病",
+    "锈病",
+    "稻瘟病",
+    "赤霉病",
+    "枯萎病",
+    "晚疫病",
+    "炭疽病",
+)
 
 CREATE_KNOWLEDGE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS vegetation_agent_knowledge_documents (
@@ -107,11 +119,38 @@ def load_knowledge_documents(limit: int = 80) -> list[dict[str, Any]]:
     ]
 
 
+def delete_knowledge_documents_by_source(source: str) -> int:
+    """按来源删除测试或已撤回知识，避免测试数据污染真实召回。"""
+    memory_ids = [
+        document_id
+        for document_id, document in _MEMORY_DOCUMENTS.items()
+        if document.get("source") == source
+    ]
+    for document_id in memory_ids:
+        _MEMORY_DOCUMENTS.pop(document_id, None)
+    deleted = len(memory_ids)
+    if not initialize_knowledge_store():
+        return deleted
+
+    import psycopg
+
+    with psycopg.connect(settings.database_url) as connection:
+        result = connection.execute(
+            "DELETE FROM vegetation_agent_knowledge_documents WHERE source = %s",
+            (source,),
+        )
+        deleted = max(deleted, result.rowcount)
+    return deleted
+
+
 def search_persisted_knowledge(query: str, limit: int = 6) -> list[dict[str, Any]]:
     terms = _tokenize(query)
     hits = []
     for document in load_knowledge_documents():
-        score = _score(terms, f"{document['title']} {document['content']}")
+        content = f"{document['title']} {document['content']}"
+        if any(term in content and term not in query for term in SPECIFIC_DIAGNOSIS_TERMS):
+            continue
+        score = _score(terms, content)
         if score > 0:
             hits.append(
                 {
@@ -147,6 +186,11 @@ def _tokenize(value: str) -> set[str]:
             "rgb",
             "病虫害",
             "灌溉",
+            "积水",
+            "涝害",
+            "盐碱",
+            "倒伏",
+            "冠层",
         )
         if term in value.lower()
     }

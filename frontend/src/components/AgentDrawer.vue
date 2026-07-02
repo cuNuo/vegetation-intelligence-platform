@@ -343,7 +343,13 @@ async function handleConfirmStreamEvent(event: AgentStreamEvent) {
 
 function resetExecutionSheet() {
   if (!store.activePlan) return
-  executionSheet.indices = [...store.activePlan.selectedIndices]
+  const executableIds = store.activePlan.recommendations
+    .filter((item) => item.executable)
+    .map((item) => item.id)
+  const selected = store.activePlan.selectedIndices.filter((indexId) =>
+    executableIds.includes(indexId),
+  )
+  executionSheet.indices = selected.length ? selected : executableIds
   executionSheet.engine = store.activePlan.engine
   executionSheet.blockSize = store.activePlan.suggestedBlockSize
   executionSheet.priority = 3
@@ -1631,9 +1637,11 @@ async function interpretResults() {
 }
 
 .execution-sheet {
-  margin: 14px -4px 0;
-  padding: 10px;
+  margin: 14px -14px 0;
+  padding: 12px 14px;
   border: 1px solid var(--border-strong);
+  border-right: 0;
+  border-left: 0;
   background: var(--surface-0);
 }
 
@@ -1648,11 +1656,11 @@ async function interpretResults() {
 
 .execution-indices label {
   display: grid;
-  grid-template-columns: 18px 48px 1fr;
-  gap: 7px;
+  grid-template-columns: 22px 56px minmax(0, 1fr);
+  gap: 8px;
   align-items: center;
-  min-height: 30px;
-  padding: 7px;
+  min-height: 34px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   color: var(--muted-light);
   font-size: 9px;
