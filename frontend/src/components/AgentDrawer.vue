@@ -21,6 +21,10 @@ interface AgentThinkingStep {
   status: AgentTraceStep['status']
 }
 
+interface QueuedThinkingStep extends AgentThinkingStep {
+  finalStatus: AgentTraceStep['status']
+}
+
 const store = useWorkspaceStore()
 const api = usePlatformApi()
 const prompt = shallowRef('')
@@ -39,8 +43,12 @@ const interpretation = shallowRef<AgentResultInterpretation | null>(null)
 const observedJobId = shallowRef('')
 const executionMessage = shallowRef('')
 const thinkingSteps = shallowRef<AgentThinkingStep[]>([])
-const thinkingQueue: AgentThinkingStep[] = []
+const thinkingQueue: QueuedThinkingStep[] = []
+const thinkingFinalizeTimers: number[] = []
 let thinkingQueueTimer: number | null = null
+const FIRST_THINKING_DELAY_MS = 420
+const THINKING_STEP_DELAY_MS = 1180
+const THINKING_MIN_DWELL_MS = 760
 const llmConfig = reactive<AgentLLMConfig>({
   provider: 'openai-compatible',
   baseUrl: '',
@@ -202,18 +210,21 @@ function appendThinkingStep(title: string, detail: string, status: AgentTraceSte
 }
 
 function enqueueThinkingStep(title: string, detail: string, status: AgentTraceStep['status'] = 'running') {
+  const revealStatus = status === 'done' ? 'running' : status
   thinkingQueue.push({
     id: `${Date.now()}-${thinkingQueue.length}`,
     title,
     detail,
-    status,
+    status: revealStatus,
+    finalStatus: status,
   })
   scheduleThinkingQueue()
 }
 
 function scheduleThinkingQueue() {
   if (thinkingQueueTimer !== null) return
-  thinkingQueueTimer = window.setTimeout(flushThinkingQueue, 360)
+  const delay = thinkingSteps.value.length ? THINKING_STEP_DELAY_MS : FIRST_THINKING_DELAY_MS
+  thinkingQueueTimer = window.setTimeout(flushThinkingQueue, delay)
 }
 
 function flushThinkingQueue() {
@@ -221,12 +232,22 @@ function flushThinkingQueue() {
   const next = thinkingQueue.shift()
   if (!next) return
   appendThinkingStep(next.title, next.detail, next.status)
+  if (next.finalStatus !== next.status) {
+    const timer = window.setTimeout(() => {
+      appendThinkingStep(next.title, next.detail, next.finalStatus)
+    }, THINKING_MIN_DWELL_MS)
+    thinkingFinalizeTimers.push(timer)
+  }
   if (thinkingQueue.length) scheduleThinkingQueue()
 }
 
 function resetThinkingStream() {
   thinkingSteps.value = []
   thinkingQueue.splice(0)
+  while (thinkingFinalizeTimers.length) {
+    const timer = thinkingFinalizeTimers.pop()
+    if (timer !== undefined) window.clearTimeout(timer)
+  }
   if (thinkingQueueTimer !== null) {
     window.clearTimeout(thinkingQueueTimer)
     thinkingQueueTimer = null
@@ -1091,6 +1112,10 @@ async function interpretResults() {
   box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
+.thinking-step.running > span {
+  animation: thinking-pulse 1.2s ease-in-out infinite;
+}
+
 .thinking-step.done > span {
   background: var(--acid);
 }
@@ -1108,6 +1133,15 @@ async function interpretResults() {
 .thinking-step strong {
   color: var(--text-1);
   font-size: 12px;
+}
+
+.thinking-step.running strong::after {
+  margin-left: 6px;
+  color: var(--accent-strong);
+  content: "进行中";
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .thinking-step small {
@@ -1856,6 +1890,13 @@ async function interpretResults() {
 
   .execution-controls {
     grid-template-columns: 1fr;
+  }
+}
+
+@keyframes thinking-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(1.45);
   }
 }
 </style>
