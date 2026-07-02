@@ -53,12 +53,22 @@ def _render_geotiff_tile_cached(
     import rasterio
     from rasterio.enums import Resampling
     from rasterio.transform import from_bounds
-    from rasterio.warp import reproject
+    from rasterio.warp import reproject, transform_bounds
 
+    if not _is_valid_tile_index(z, x, y):
+        return _empty_tile()
     source_path = resolve_tile_key(key)
     tile_bounds = _tile_bounds_mercator(z, x, y)
     with rasterio.open(source_path) as dataset:
         if not dataset.crs:
+            return _empty_tile()
+        dataset_bounds = transform_bounds(
+            dataset.crs,
+            "EPSG:3857",
+            *dataset.bounds,
+            densify_pts=21,
+        )
+        if not _bounds_intersect(tile_bounds, dataset_bounds):
             return _empty_tile()
         indexes = _display_indexes(dataset.count)
         stretches = _tile_stretches_cached(key, mtime_ns, size, tuple(indexes))
@@ -134,6 +144,27 @@ def _tile_bounds_mercator(z: int, x: int, y: int) -> tuple[float, float, float, 
     north = WEB_MERCATOR_LIMIT - y * tile_span
     south = north - tile_span
     return west, south, east, north
+
+
+def _is_valid_tile_index(z: int, x: int, y: int) -> bool:
+    """判断 XYZ 瓦片编号是否落在 Web Mercator 金字塔范围内。"""
+    if z < 0 or z > 30:
+        return False
+    limit = 2**z
+    return 0 <= x < limit and 0 <= y < limit
+
+
+def _bounds_intersect(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> bool:
+    """判断两个 EPSG:3857 范围是否相交，避免范围外瓦片触发重投影。"""
+    return (
+        left[0] <= right[2]
+        and left[2] >= right[0]
+        and left[1] <= right[3]
+        and left[3] >= right[1]
+    )
 
 
 def _display_indexes(count: int) -> list[int]:

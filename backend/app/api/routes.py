@@ -231,7 +231,11 @@ def geotiff_tile(
         raise HTTPException(status_code=404, detail=str(error)) from error
     except Exception as error:  # noqa: BLE001 - 栅格渲染边界需要返回可诊断错误
         raise HTTPException(status_code=422, detail=f"瓦片渲染失败: {error}") from error
-    return Response(content=tile, media_type="image/png")
+    return Response(
+        content=tile,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
 
 
 @router.post("/api/agent/plan")

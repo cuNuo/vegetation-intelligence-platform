@@ -36,6 +36,7 @@ const sourceTilesInView = shallowRef(false)
 const sourceTilesReady = shallowRef(false)
 const resultTilesInView = shallowRef(false)
 const mapBearing = shallowRef(0)
+const currentZoom = shallowRef(3.2)
 const seenSourceKeys = new Set<string>()
 let pendingSourceLocateKey = ''
 let renderedSourceSignature = ''
@@ -52,6 +53,8 @@ const TIANDITU_TILE =
   'https://t0.tianditu.gov.cn/{layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={layer}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' +
   TIANDITU_TOKEN
 const DEFAULT_LOCATE_MAX_ZOOM = 16
+const RASTER_TILE_MAX_ZOOM = 16
+const INTERACTIVE_MAX_ZOOM = 19
 
 const basemaps: Record<
   BasemapKey,
@@ -145,6 +148,7 @@ const statusText = computed(() => {
 })
 const sourceLayerLabel = computed(() => (assetTileUrl.value ? '导入影像 TIF' : hasBeforePreview.value ? '导入影像预览' : '影像范围'))
 const sourceRenderMode = computed(() => {
+  if (assetTileUrl.value && currentZoom.value > RASTER_TILE_MAX_ZOOM) return '原图 TIF，16级后平滑放大'
   if (assetTileUrl.value && sourceTilesReady.value) return '原图 TIF 瓦片'
   if (assetTileUrl.value && assetPreviewUrl.value) return '预览就绪，原图瓦片加载中'
   if (assetTileUrl.value) return '原图 TIF，进入范围后加载'
@@ -152,10 +156,19 @@ const sourceRenderMode = computed(() => {
   return '未加载'
 })
 const resultRenderMode = computed(() => {
+  if (resultTileUrl.value && currentZoom.value > RASTER_TILE_MAX_ZOOM) return '结果 TIF，16级后平滑放大'
   if (resultTileUrl.value && resultTilesInView.value) return '结果 TIF 瓦片'
   if (resultTileUrl.value) return '结果 TIF，进入范围后加载'
   if (previewUrl.value) return 'PNG 预览'
   return '未加载'
+})
+const zoomStatus = computed(() => {
+  const zoom = currentZoom.value.toFixed(1)
+  if (!resultTileUrl.value) return `缩放 ${zoom}`
+  if (currentZoom.value > RASTER_TILE_MAX_ZOOM) {
+    return `缩放 ${zoom}，复用 ${RASTER_TILE_MAX_ZOOM} 级瓦片`
+  }
+  return `缩放 ${zoom}，动态瓦片`
 })
 const resultLegend = computed(() => {
   const product = props.product
@@ -301,8 +314,16 @@ function isBoundsInViewport(bounds: [number, number, number, number] | null) {
 
 /** 触发 MapLibre 重新评估当前视口的瓦片请求。 */
 function refreshTileDemand() {
-  sourceTilesInView.value = Boolean(layerState.sourcePreview && isBoundsInViewport(sourceBounds.value))
-  resultTilesInView.value = Boolean(layerState.result && isBoundsInViewport(resultBounds.value))
+  sourceTilesInView.value = Boolean(shouldShowSourcePreview() && isBoundsInViewport(sourceBounds.value))
+  resultTilesInView.value = Boolean(shouldShowResult() && isBoundsInViewport(resultBounds.value))
+}
+
+/** 记录当前缩放级别，供图层状态和高倍浏览提示使用。 */
+function updateZoomState() {
+  const zoom = map.value?.getZoom()
+  if (typeof zoom === 'number' && Number.isFinite(zoom)) {
+    currentZoom.value = zoom
+  }
 }
 
 /** 源影像瓦片可用后切换占位预览，减少空白闪烁。 */
@@ -403,6 +424,7 @@ function syncSourceLayer() {
       tiles: [assetTileUrl.value],
       tileSize: 256,
       bounds: [west, south, east, north],
+      maxzoom: RASTER_TILE_MAX_ZOOM,
     })
     instance.addLayer({
       id: 'source-tiles',
@@ -513,6 +535,7 @@ function syncProductLayer() {
       tiles: [tileSourceUrl],
       tileSize: 256,
       bounds: [west, south, east, north],
+      maxzoom: RASTER_TILE_MAX_ZOOM,
     })
     instance.addLayer({
       id: 'vegetation-result',
@@ -666,6 +689,7 @@ onMounted(() => {
     container: mapContainer.value,
     center: [105, 35],
     zoom: 3.2,
+    maxZoom: INTERACTIVE_MAX_ZOOM,
     attributionControl: false,
     style: {
       version: 8,
@@ -682,8 +706,10 @@ onMounted(() => {
   instance.on('rotate', () => {
     mapBearing.value = instance.getBearing()
   })
+  instance.on('zoom', updateZoomState)
   instance.on('moveend', () => {
     mapBearing.value = instance.getBearing()
+    updateZoomState()
     refreshTileDemand()
     promoteSourceTilesIfReady()
   })
@@ -692,6 +718,7 @@ onMounted(() => {
   })
   instance.on('load', () => {
     mapReady = true
+    updateZoomState()
     syncMapLayers()
     locateImportedAssetIfPending()
   })
@@ -847,6 +874,10 @@ onBeforeUnmount(() => {
         <p>
           <span>结果图层</span>
           <strong>{{ resultRenderMode }}</strong>
+        </p>
+        <p>
+          <span>缩放策略</span>
+          <strong>{{ zoomStatus }}</strong>
         </p>
       </div>
       <button type="button" class="restore-button" @click="showAnalysisLayers">恢复分析图层</button>
@@ -1209,6 +1240,7 @@ onBeforeUnmount(() => {
 
 .layer-status p {
   display: flex;
+  min-width: 0;
   justify-content: space-between;
   gap: 12px;
   margin: 0;
@@ -1217,7 +1249,12 @@ onBeforeUnmount(() => {
 }
 
 .layer-status strong {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-1);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-state {

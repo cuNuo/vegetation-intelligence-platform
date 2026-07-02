@@ -1,0 +1,28 @@
+{
+  "appUrl": "http://127.0.0.1:5176/",
+  "rasterPath": "data/test/bajiepart1.tif",
+  "tileCount": 5,
+  "highZoomTileCount": 0,
+  "failedTiles": [],
+  "highZoomOverLimitTiles": [],
+  "mapState": {
+    "zoom": 18,
+    "maxZoom": 19,
+    "sourceMaxzoom": 16,
+    "sourceBounds": [
+      115.10366830452075,
+      36.88299644969501,
+      115.10887558044763,
+      36.885153457210485
+    ]
+  },
+  "layerText": "LAYERS\n只看底图\n天地图底图\n矢量\n影像\n地形\n影像范围\n定位\n计算结果\n定位\n结果指数\nNDVI\nGNDVI\nBNDVI\nRDVI\nTVI\nCTVI\nIPVI\n范围框\n定位\n显示模式\n计算前\n计算后\n对比\n结果透明度 78%\n恢复分析图层",
+  "screenshots": [
+    "output/playwright/result-layer-manual-01-upload.png",
+    "output/playwright/result-layer-manual-02-index-dialog.png",
+    "output/playwright/result-layer-manual-03-result-map.png",
+    "output/playwright/result-layer-manual-04-high-zoom.png",
+    "output/playwright/result-layer-manual-05-mobile.png"
+  ],
+  "errors": []
+}

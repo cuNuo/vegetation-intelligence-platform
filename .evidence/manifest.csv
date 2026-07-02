@@ -39,3 +39,11 @@ docx/build_handbook.py,script,passed,从当前源码自动生成主手册、Fast
 output/playwright/agent-drawer-overlap-fix-panel-20260702.png,visual-qa,passed,Agent窄屏长文本与执行单无重叠截图
 20260702-2153,手动植被指数提取弹窗,task-log,frontend/manual-index-extraction,无,completed,.evidence/active/20260702-2153-手动植被指数提取弹窗.md
 .serena/memories/frontend/20260702-manual-index-extraction-dialog.md,memory,active,手动植被指数提取弹窗入口与维护约束
+20260702-2206,结果图层缩放性能与用户手册,task-log,frontend/result-layer-zoom-ux,无,completed,.evidence/active/20260702-2206-结果图层缩放性能与用户手册.md
+docx/结果图层缩放与浏览用户手册.docx,document,passed,结果图层缩放与浏览用户手册，含网页截图和高倍缩放说明
+docx/build_result_layer_manual.py,script,passed,从 Playwright 网页截图生成结果图层缩放用户手册
+output/playwright/validate-result-layer-zoom-ux.cjs,script,passed,结果图层高倍缩放 Playwright 验证脚本
+output/playwright/result-layer-manual-03-result-map.png,visual-qa,passed,结果图层正常缩放状态网页截图
+output/playwright/result-layer-manual-04-high-zoom.png,visual-qa,passed,18级缩放复用16级瓦片网页截图
+.evidence/runtime-logs/20260702-2206-result-layer-zoom-playwright.log,runtime-log,passed,Playwright验证日志，高倍缩放无新增过限瓦片请求
+.evidence/docx-render/result-layer-manual/contact-sheet.png,visual-qa,passed,Word手册PDF页面渲染拼图检查件

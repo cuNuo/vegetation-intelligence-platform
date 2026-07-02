@@ -229,6 +229,7 @@ def test_geotiff_tile_endpoint_renders_uploaded_tif(sample_raster: Path) -> None
     response = client.get("/api/tiles/0/0/0.png", params={"key": object_key})
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "public, max-age=86400, immutable"
     assert response.content.startswith(b"\x89PNG")
 
 
