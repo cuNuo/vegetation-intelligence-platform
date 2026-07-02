@@ -1,3 +1,5 @@
+# backend/app/api/routes.py
+# 文件说明：平台 REST、OGC API - Processes、Agent SSE 和瓦片接口路由。
 """平台REST与OGC API - Processes兼容路由。"""
 
 from __future__ import annotations
@@ -232,12 +234,64 @@ async def create_agent_plan(request: AgentPlanRequest) -> dict[str, Any]:
 
 @router.post("/api/agent/plan/stream")
 async def stream_agent_plan(request: AgentPlanRequest) -> StreamingResponse:
+    bands_label = " / ".join(request.available_bands) if request.available_bands else "未提供"
+    size_label = (
+        f"{request.raster_width}×{request.raster_height}"
+        if request.raster_width and request.raster_height
+        else "未提供"
+    )
+    document_count = len(request.external_documents)
+
     async def events():
+        yield _sse(
+            "thought",
+            {
+                "title": "建立上下文",
+                "detail": (
+                    f"影像尺寸 {size_label}；可用波段 {bands_label}；"
+                    f"外部资料 {document_count} 条；正在整理历史会话。"
+                ),
+                "status": "running",
+            },
+        )
         yield _sse("status", {"message": "已收到问题，正在建立分析上下文。"})
+        await asyncio.sleep(0)
         try:
+            yield _sse(
+                "thought",
+                {
+                    "title": "检索知识",
+                    "detail": (
+                        "正在匹配指数适用场景、必要波段、公式约束和可执行性；"
+                        f"外部知识库补充 {document_count} 条。"
+                    ),
+                    "status": "running",
+                },
+            )
             yield _sse("status", {"message": "正在检索本地指数知识和外部知识库。"})
+            await asyncio.sleep(0)
             if request.enable_web_search:
+                yield _sse(
+                    "thought",
+                    {
+                        "title": "网络检索",
+                        "detail": "正在补充公开资料中的适用场景、异常区域线索和判读限制。",
+                        "status": "running",
+                    },
+                )
                 yield _sse("status", {"message": "正在联合网络检索适用场景。"})
+                await asyncio.sleep(0)
+            yield _sse(
+                "thought",
+                {
+                    "title": "生成方案",
+                    "detail": (
+                        "正在综合波段映射、指数需求、引擎选择、内存估算和人工确认边界。"
+                    ),
+                    "status": "running",
+                },
+            )
+            await asyncio.sleep(0)
             plan = await vegetation_agent.create_plan(
                 request.message,
                 request.available_bands,
@@ -249,6 +303,34 @@ async def stream_agent_plan(request: AgentPlanRequest) -> StreamingResponse:
                 request.custom_index.model_dump(by_alias=True) if request.custom_index else None,
                 request.session_id,
             )
+            selected_indices = [str(index).upper() for index in plan.get("selectedIndices", [])]
+            recommendations = plan.get("recommendations", [])
+            executable_count = sum(1 for item in recommendations if item.get("executable"))
+            yield _sse(
+                "thought",
+                {
+                    "title": "推荐指数",
+                    "detail": (
+                        f"已选 {', '.join(selected_indices) if selected_indices else '无'}；"
+                        f"可执行 {executable_count}/{len(recommendations)} 个。"
+                    ),
+                    "status": "done",
+                },
+            )
+            await asyncio.sleep(0)
+            yield _sse(
+                "thought",
+                {
+                    "title": "执行引擎",
+                    "detail": (
+                        f"推荐 {str(plan.get('engine', 'auto')).upper()}；"
+                        f"估算内存 {plan.get('estimatedMemoryMb', '未知')} MB；"
+                        "提交前仍需人工确认。"
+                    ),
+                    "status": "done",
+                },
+            )
+            await asyncio.sleep(0)
             yield _sse(
                 "status",
                 {

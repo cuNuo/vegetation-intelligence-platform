@@ -1,3 +1,5 @@
+<!-- frontend/src/components/AgentDrawer.vue -->
+<!-- 文件说明：智能体对话、方案确认、知识导入和结果解读侧栏。 -->
 <script setup lang="ts">
 import { computed, nextTick, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import { usePlatformApi } from '@/composables/usePlatformApi'
@@ -6,9 +8,18 @@ import type {
   AgentConversationEvent,
   AgentExecutionSheet,
   AgentLLMConfig,
+  AgentTraceStep,
   AgentResultInterpretation,
   AgentStreamEvent,
+  AgentKnowledgeHit,
 } from '@/types/platform'
+
+interface AgentThinkingStep {
+  id: string
+  title: string
+  detail: string
+  status: AgentTraceStep['status']
+}
 
 const store = useWorkspaceStore()
 const api = usePlatformApi()
@@ -18,7 +29,7 @@ const isThinking = shallowRef(false)
 const isInterpreting = shallowRef(false)
 const isConfigOpen = shallowRef(false)
 const isKnowledgeOpen = shallowRef(false)
-const isDetailsOpen = shallowRef(true)
+const isDetailsOpen = shallowRef(false)
 const isKnowledgeImporting = shallowRef(false)
 const errorMessage = shallowRef('')
 const knowledgeMessage = shallowRef('')
@@ -27,6 +38,7 @@ const customIndexEnabled = shallowRef(false)
 const interpretation = shallowRef<AgentResultInterpretation | null>(null)
 const observedJobId = shallowRef('')
 const executionMessage = shallowRef('')
+const thinkingSteps = shallowRef<AgentThinkingStep[]>([])
 const llmConfig = reactive<AgentLLMConfig>({
   provider: 'openai-compatible',
   baseUrl: '',
@@ -57,10 +69,28 @@ const localConversation = shallowRef<AgentConversationEvent[]>([])
 const executableCount = computed(
   () => store.activePlan?.recommendations.filter((item) => item.executable).length ?? 0,
 )
-const visibleSources = computed(() => [
+const visibleSources = computed(() => dedupeSources([
   ...(store.activePlan?.knowledgeHits ?? []),
   ...(store.activePlan?.webHits ?? []),
-])
+]))
+const visibleThinkingSteps = computed(() => {
+  const merged = thinkingSteps.value
+  const byKey = new Map<string, AgentTraceStep>()
+  for (const step of merged) {
+    const key = thinkingStepKey(step.title, step.detail)
+    byKey.set(key, step)
+  }
+  return Array.from(byKey.values()).slice(-5)
+})
+const visibleTraceSteps = computed(() => {
+  const steps = store.activePlan?.trace ?? []
+  const byKey = new Map<string, AgentTraceStep>()
+  for (const step of steps) {
+    const key = thinkingStepKey(step.title, step.detail ?? '')
+    byKey.set(key, step)
+  }
+  return Array.from(byKey.values())
+})
 const interpretationProducts = computed(() => {
   if (store.activeProduct) return [store.activeProduct]
   const completed = store.completedJobs.find((job) => job.result?.products?.length)
@@ -142,20 +172,59 @@ function appendStatus(content: string, eventType = 'execution') {
   appendLocalMessage('system', content, eventType)
 }
 
+function dedupeSources(sources: AgentKnowledgeHit[]) {
+  const seen = new Set<string>()
+  return sources.filter((source) => {
+    const key = `${source.title}|${source.source}|${source.content}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function appendThinkingStep(title: string, detail: string, status: AgentTraceStep['status'] = 'running') {
+  const key = thinkingStepKey(title, detail)
+  const existing = thinkingSteps.value.findIndex((step) => thinkingStepKey(step.title, step.detail) === key)
+  const step = {
+    id: `${Date.now()}-${thinkingSteps.value.length}`,
+    title,
+    detail,
+    status,
+  }
+  thinkingSteps.value = existing >= 0
+    ? thinkingSteps.value.map((item, index) => (index === existing ? { ...item, status } : item))
+    : [...thinkingSteps.value, step].slice(-8)
+}
+
+function thinkingStepKey(title: string, detail: string) {
+  return `${title.trim()}|${detail.replace(/\s+/g, ' ').trim()}`
+}
+
 function extractErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
 function handlePlanStreamEvent(event: AgentStreamEvent) {
+  if (event.event === 'thought') {
+    appendThinkingStep(
+      typeof event.data.title === 'string' ? event.data.title : '思考过程',
+      typeof event.data.detail === 'string' ? event.data.detail : '',
+      ['done', 'running', 'warning', 'blocked'].includes(String(event.data.status))
+        ? event.data.status as AgentTraceStep['status']
+        : 'running',
+    )
+    return
+  }
   if (event.event === 'status' || event.event === 'done') {
     const message = typeof event.data.message === 'string' ? event.data.message : '智能体状态已更新'
-    appendStatus(message, 'plan')
+    appendThinkingStep(event.event === 'done' ? '完成' : '状态更新', message, event.event === 'done' ? 'done' : 'running')
     return
   }
   if (event.event === 'plan') {
     const plan = event.data as unknown as NonNullable<typeof store.activePlan>
     store.setActivePlan(plan)
     resetExecutionSheet()
+    isDetailsOpen.value = false
     if (!plan.conversation.length) appendLocalMessage('assistant', plan.summary, 'plan')
     return
   }
@@ -170,7 +239,6 @@ async function handleConfirmStreamEvent(event: AgentStreamEvent) {
   if (event.event === 'status' || event.event === 'done') {
     const message = typeof event.data.message === 'string' ? event.data.message : '任务状态已更新'
     executionMessage.value = message
-    appendStatus(message)
     return
   }
   if (event.event === 'plan') {
@@ -184,7 +252,6 @@ async function handleConfirmStreamEvent(event: AgentStreamEvent) {
     const merged = [job, ...store.jobs.filter((item) => item.id !== job.id)]
     store.setJobs(merged)
     executionMessage.value = `${job.status} / ${job.progress}% / ${job.message}`
-    appendStatus(`任务 ${job.id.slice(0, 8)}：${executionMessage.value}`)
     return
   }
   if (event.event === 'result') {
@@ -274,6 +341,7 @@ async function generatePlan() {
   isThinking.value = true
   errorMessage.value = ''
   interpretation.value = null
+  thinkingSteps.value = []
   try {
     await api.createPlanStream(message, store.asset.availableBands, {
       llm: currentLlmConfig(),
@@ -406,6 +474,12 @@ async function interpretResults() {
       <div>
         <span class="eyebrow">AGRONOMY COPILOT</span>
         <h2>对话</h2>
+        <div class="agent-header-status">
+          <span>{{ statusLine }}</span>
+          <span>{{ canUseLlm ? `${llmConfig.provider} / ${llmConfig.model}` : '规则引擎兜底' }}</span>
+          <span>{{ enableWebSearch ? '网络检索开启' : '仅本地RAG' }}</span>
+          <span>{{ store.activePlan?.sessionId ? `SESSION ${store.activePlan.sessionId.slice(0, 8)}` : 'NEW SESSION' }}</span>
+        </div>
       </div>
       <div class="header-actions">
         <button class="config-button" type="button" @click="isKnowledgeOpen = true">知识库</button>
@@ -415,72 +489,61 @@ async function interpretResults() {
       </div>
     </header>
 
-    <div class="conversation">
-      <div v-if="!conversationEvents.length" class="agent-message">
-        <span>AI</span>
-        <p>输入你的判读目标，我会生成可确认的计算方案。</p>
-      </div>
-      <div class="agent-state">
-        <strong>{{ statusLine }}</strong>
-        <small>
-          {{ store.activePlan?.sessionId ? `SESSION ${store.activePlan.sessionId.slice(0, 8)}` : 'NEW SESSION' }}
-        </small>
-      </div>
-      <div v-if="conversationEvents.length" ref="timeline" class="message-timeline">
+    <div class="agent-scroll">
+      <section class="conversation">
+        <div v-if="!conversationEvents.length" class="agent-message">
+          <span>AI</span>
+          <p>输入你的判读目标，我会生成可确认的计算方案。</p>
+        </div>
+        <div v-if="conversationEvents.length" ref="timeline" class="message-timeline">
+          <article
+            v-for="event in conversationEvents"
+            :key="event.id"
+            :class="['timeline-message', event.role]"
+          >
+            <span>{{ event.role === 'user' ? 'YOU' : event.role === 'system' ? 'RUN' : 'AI' }}</span>
+            <div>
+              <strong>{{ eventTitle(event) }}</strong>
+              <p>{{ event.content }}</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="visibleThinkingSteps.length" class="thinking-panel">
+        <div class="section-title compact">
+          <span>思考过程</span>
+          <small>{{ isThinking ? 'streaming' : `${visibleThinkingSteps.length} steps` }}</small>
+        </div>
         <article
-          v-for="event in conversationEvents"
-          :key="event.id"
-          :class="['timeline-message', event.role]"
+          v-for="step in visibleThinkingSteps"
+          :key="step.id"
+          :class="['thinking-step', step.status]"
         >
-          <span>{{ event.role === 'user' ? 'YOU' : event.role === 'system' ? 'RUN' : 'AI' }}</span>
+          <span />
           <div>
-            <strong>{{ eventTitle(event) }}</strong>
-            <p>{{ event.content }}</p>
+            <strong>{{ step.title }}</strong>
+            <small>{{ step.detail }}</small>
           </div>
         </article>
-      </div>
-      <div class="runtime-summary">
-        <span>{{ canUseLlm ? `${llmConfig.provider} / ${llmConfig.model}` : '规则引擎兜底' }}</span>
-        <span>{{ enableWebSearch ? '网络检索开启' : '仅本地RAG' }}</span>
-      </div>
-      <button v-if="store.activePlan" class="details-toggle" type="button" @click="isDetailsOpen = !isDetailsOpen">
-        {{ isDetailsOpen ? '收起方案详情' : '展开方案详情' }}
-      </button>
-      <div class="prompt-box">
-        <textarea
-          v-model="prompt"
-          rows="3"
-          aria-label="分析需求"
-          placeholder="输入判读目标，例如：找出长势异常区域并解释原因"
-          @keydown.ctrl.enter.prevent="generatePlan"
-        />
-        <button :disabled="isThinking || prompt.length < 2" @click="generatePlan">
-          {{ isThinking ? '生成中…' : '发送' }}
+      </section>
+
+    <section v-if="store.activePlan" class="plan-card">
+      <div class="plan-heading">
+        <div>
+          <div class="plan-number">PLAN / {{ store.activePlan.id.slice(0, 6).toUpperCase() }}</div>
+          <h3>{{ store.activePlan.title }}</h3>
+        </div>
+        <button class="details-toggle" type="button" @click="isDetailsOpen = !isDetailsOpen">
+          {{ isDetailsOpen ? '收起详情' : '展开详情' }}
         </button>
       </div>
-    </div>
-
-    <section v-if="store.activePlan && isDetailsOpen" class="plan-card">
-      <div class="plan-number">PLAN / {{ store.activePlan.id.slice(0, 6).toUpperCase() }}</div>
-      <h3>{{ store.activePlan.title }}</h3>
       <p>{{ store.activePlan.summary }}</p>
       <div class="agent-mode">
         <span>{{ store.activePlan.agentMode }}</span>
         <span>{{ store.activePlan.llmProvider }} / {{ store.activePlan.llmStatus }}</span>
       </div>
       <p class="llm-message">{{ store.activePlan.llmMessage }}</p>
-
-      <label class="switch-row custom-toggle">
-        <input v-model="customIndexEnabled" type="checkbox" />
-        同时新建自定义指数
-      </label>
-      <div v-if="customIndexEnabled" class="custom-index-box">
-        <input v-model="customIndex.id" aria-label="自定义指数ID" placeholder="指数ID，如 nd_custom" />
-        <input v-model="customIndex.name" aria-label="自定义指数名称" placeholder="指数名称" />
-        <textarea v-model="customIndex.expression" rows="2" aria-label="自定义指数表达式" />
-        <input v-model="customIndex.description" aria-label="自定义指数说明" placeholder="适用场景说明" />
-      </div>
-
       <div class="plan-metrics">
         <div>
           <span>可执行指数</span>
@@ -496,19 +559,32 @@ async function interpretResults() {
         </div>
       </div>
 
-      <div class="trace-list">
-        <div class="section-title compact">
+      <template v-if="isDetailsOpen">
+
+      <label class="switch-row custom-toggle">
+        <input v-model="customIndexEnabled" type="checkbox" />
+        同时新建自定义指数
+      </label>
+      <div v-if="customIndexEnabled" class="custom-index-box">
+        <input v-model="customIndex.id" aria-label="自定义指数ID" placeholder="指数ID，如 nd_custom" />
+        <input v-model="customIndex.name" aria-label="自定义指数名称" placeholder="指数名称" />
+        <textarea v-model="customIndex.expression" rows="2" aria-label="自定义指数表达式" />
+        <input v-model="customIndex.description" aria-label="自定义指数说明" placeholder="适用场景说明" />
+      </div>
+
+      <details class="trace-list">
+        <summary>
           <span>运行过程</span>
-          <small>{{ store.activePlan.trace.length }} steps</small>
-        </div>
-        <article v-for="step in store.activePlan.trace" :key="step.id" :class="['trace-item', step.status]">
+          <small>{{ visibleTraceSteps.length }} steps</small>
+        </summary>
+        <article v-for="step in visibleTraceSteps" :key="step.id" :class="['trace-item', step.status]">
           <span class="trace-dot"></span>
           <div>
             <strong>{{ step.title }}</strong>
             <small>{{ step.detail }}</small>
           </div>
         </article>
-      </div>
+      </details>
 
       <div class="recommendations">
         <article
@@ -527,17 +603,17 @@ async function interpretResults() {
         </article>
       </div>
 
-      <div v-if="visibleSources.length" class="source-list">
-        <div class="section-title compact">
+      <details v-if="visibleSources.length" class="source-list">
+        <summary>
           <span>检索来源</span>
-          <small>RAG + Web</small>
-        </div>
-        <article v-for="source in visibleSources.slice(0, 5)" :key="`${source.source}-${source.title}`">
+          <small>{{ visibleSources.length }} 条，已去重</small>
+        </summary>
+        <article v-for="source in visibleSources.slice(0, 3)" :key="`${source.source}-${source.title}-${source.content}`">
           <strong>{{ source.title }}</strong>
           <small>{{ source.source }}</small>
           <p>{{ source.content }}</p>
         </article>
-      </div>
+      </details>
 
       <div v-if="store.activePlan.warnings.length" class="warning-box">
         <span>质量提示</span>
@@ -620,6 +696,7 @@ async function interpretResults() {
       >
         {{ isInterpreting ? '正在解读统计…' : '根据统计生成建议' }}
       </button>
+      </template>
     </section>
 
     <section v-if="interpretation" class="insight-card">
@@ -641,6 +718,20 @@ async function interpretResults() {
     </section>
 
     <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+    </div>
+
+    <div class="prompt-box">
+      <textarea
+        v-model="prompt"
+        rows="3"
+        aria-label="分析需求"
+        placeholder="输入判读目标，例如：找出长势异常区域并解释原因"
+        @keydown.ctrl.enter.prevent="generatePlan"
+      />
+      <button :disabled="isThinking || prompt.length < 2" @click="generatePlan">
+        {{ isThinking ? '生成中…' : '发送' }}
+      </button>
+    </div>
 
     <div v-if="isKnowledgeOpen" class="modal-backdrop" @click.self="isKnowledgeOpen = false">
       <section class="config-modal" role="dialog" aria-modal="true" aria-label="外部知识库">
@@ -717,13 +808,13 @@ async function interpretResults() {
 
 <style scoped>
 .agent-panel {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   height: 100%;
   min-height: 0;
   padding: 22px;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--border-strong);
   background:
     linear-gradient(180deg, var(--surface-2), var(--surface-1)),
@@ -738,8 +829,18 @@ async function interpretResults() {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 14px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--border);
+}
+
+.agent-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 3px;
 }
 
 .eyebrow,
@@ -757,7 +858,29 @@ async function interpretResults() {
   font-weight: 500;
 }
 
+.agent-header-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted-light);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-header-status span {
+  position: relative;
+}
+
+.agent-header-status span + span::before {
+  position: absolute;
+  left: -8px;
+  color: var(--border-strong);
+  content: "/";
+}
+
 .config-button {
+  min-width: 54px;
   padding: 6px 8px;
   border: 1px solid var(--border-strong);
   background: transparent;
@@ -765,11 +888,14 @@ async function interpretResults() {
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 800;
+  white-space: nowrap;
+  word-break: keep-all;
   cursor: pointer;
 }
 
 .header-actions {
   display: flex;
+  flex-shrink: 0;
   gap: 7px;
 }
 
@@ -846,12 +972,10 @@ async function interpretResults() {
 }
 
 .conversation {
-  display: flex;
-  height: min(620px, calc(100dvh - 190px));
-  min-height: 430px;
-  flex-direction: column;
+  display: grid;
+  min-height: 0;
   gap: 12px;
-  padding: 20px 0;
+  padding: 14px 0 0;
 }
 
 .agent-message {
@@ -880,42 +1004,71 @@ async function interpretResults() {
   margin: 0;
 }
 
-.agent-state {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 0;
-  padding: 9px 10px;
-  border: 1px solid var(--border);
-  background: var(--surface-hover);
-}
-
-.agent-state strong,
-.agent-state small {
-  overflow-wrap: anywhere;
-}
-
-.agent-state strong {
-  color: var(--text-1);
-  font-size: 10px;
-}
-
-.agent-state small {
-  color: var(--acid);
-  font-family: var(--font-mono);
-  font-size: 8px;
-}
-
 .message-timeline {
   display: grid;
-  flex: 1;
-  min-height: 0;
+  min-height: 96px;
   gap: 8px;
   align-content: end;
   margin-top: 0;
-  overflow: auto;
   padding: 2px 3px 8px 0;
+}
+
+.thinking-panel {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  padding: 9px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  position: relative;
+  z-index: 1;
+}
+
+.thinking-panel .section-title.compact {
+  margin: 0 0 8px;
+}
+
+.thinking-step {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+
+.thinking-step > span {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.thinking-step.done > span {
+  background: var(--acid);
+}
+
+.thinking-step.warning > span {
+  background: var(--warning);
+}
+
+.thinking-step strong,
+.thinking-step small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.thinking-step strong {
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.thinking-step small {
+  margin-top: 2px;
+  color: var(--muted-light);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .timeline-message {
@@ -962,21 +1115,6 @@ async function interpretResults() {
   color: var(--muted-light);
   font-size: 10px;
   line-height: 1.5;
-}
-
-.runtime-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 0;
-}
-
-.runtime-summary span {
-  padding: 5px 7px;
-  border: 1px solid var(--border);
-  color: var(--muted-light);
-  font-family: var(--font-mono);
-  font-size: 8px;
 }
 
 .custom-toggle {
@@ -1092,13 +1230,15 @@ async function interpretResults() {
 }
 
 .details-toggle {
-  min-height: 34px;
+  min-height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
   color: var(--acid);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -1138,8 +1278,22 @@ async function interpretResults() {
 }
 
 .plan-card {
-  padding-top: 18px;
+  position: relative;
+  z-index: 0;
+  min-height: 0;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+.plan-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-heading > div {
+  min-width: 0;
 }
 
 .plan-card h3 {
@@ -1147,6 +1301,7 @@ async function interpretResults() {
   font-family: var(--font-display);
   font-size: 20px;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .plan-card > p {
@@ -1213,6 +1368,25 @@ async function interpretResults() {
 
 .trace-list {
   margin-bottom: 14px;
+}
+
+.trace-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.trace-list summary small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .trace-item {
@@ -1300,6 +1474,25 @@ async function interpretResults() {
   margin-top: 14px;
 }
 
+.source-list summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  color: var(--acid);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.source-list summary small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .source-list article {
   padding: 9px;
   border: 1px solid var(--border);
@@ -1335,7 +1528,7 @@ async function interpretResults() {
 
 .warning-box {
   margin: 14px 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-left: 2px solid #dca35c;
   background: color-mix(in srgb, var(--warning) 9%, transparent);
 }
@@ -1347,9 +1540,10 @@ async function interpretResults() {
 }
 
 .warning-box p {
-  margin: 5px 0 0;
+  margin: 4px 0 0;
   color: var(--text-2);
   font-size: 9px;
+  line-height: 1.45;
 }
 
 .execution-sheet {
@@ -1542,9 +1736,7 @@ async function interpretResults() {
 .eyebrow,
 .plan-number,
 .section-title small,
-.agent-state small,
 .timeline-message > span,
-.runtime-summary span,
 .config-grid span,
 .field-stack span,
 .execution-controls span,
@@ -1561,7 +1753,6 @@ async function interpretResults() {
 .prompt-box button,
 .confirm-button,
 .secondary-button,
-.agent-state strong,
 .timeline-message strong,
 .trace-item strong,
 .recommendations strong,

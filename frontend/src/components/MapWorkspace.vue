@@ -1,3 +1,5 @@
+<!-- frontend/src/components/MapWorkspace.vue -->
+<!-- 文件说明：MapLibre 遥感工作区、TIF 瓦片叠加、占位预览和视角控制。 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import maplibregl, { type Map } from 'maplibre-gl'
@@ -7,6 +9,12 @@ import type { Product, UploadedAsset } from '@/types/platform'
 const props = defineProps<{
   asset: UploadedAsset | null
   product: Product | null
+  products?: Product[]
+  activeProductIndex?: number
+}>()
+
+const emit = defineEmits<{
+  selectProduct: [index: number]
 }>()
 
 type BasemapKey = 'vector' | 'image' | 'terrain'
@@ -19,6 +27,10 @@ const opacity = defineModel<number>('opacity', { default: 0.78 })
 const cursorCoordinates = shallowRef('将鼠标移入地图读取坐标')
 const activeBasemap = shallowRef<BasemapKey>('image')
 const compareMode = shallowRef<CompareMode>('both')
+const sourceTilesInView = shallowRef(false)
+const resultTilesInView = shallowRef(false)
+const seenSourceKeys = new Set<string>()
+let pendingSourceLocateKey = ''
 const layerState = reactive({
   basemap: true,
   sourcePreview: true,
@@ -30,6 +42,7 @@ const hasTiandituToken = computed(() => TIANDITU_TOKEN.trim().length > 0)
 const TIANDITU_TILE =
   'https://t0.tianditu.gov.cn/{layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER={layer}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=' +
   TIANDITU_TOKEN
+const DEFAULT_LOCATE_MAX_ZOOM = 16
 
 const basemaps: Record<BasemapKey, { label: string; layers: string[] }> = {
   vector: { label: '矢量', layers: ['tdt-vec', 'tdt-cva'] },
@@ -94,12 +107,14 @@ const statusText = computed(() => {
 })
 const sourceLayerLabel = computed(() => (assetTileUrl.value ? '导入影像 TIF' : hasBeforePreview.value ? '导入影像预览' : '影像范围'))
 const sourceRenderMode = computed(() => {
-  if (assetTileUrl.value) return 'TIF 瓦片'
+  if (assetTileUrl.value && sourceTilesInView.value) return '原图 TIF 瓦片'
+  if (assetTileUrl.value) return '原图 TIF，进入范围后加载'
   if (assetPreviewUrl.value) return 'PNG 预览'
   return '未加载'
 })
 const resultRenderMode = computed(() => {
-  if (resultTileUrl.value) return 'TIF 瓦片'
+  if (resultTileUrl.value && resultTilesInView.value) return '结果 TIF 瓦片'
+  if (resultTileUrl.value) return '结果 TIF，进入范围后加载'
   if (previewUrl.value) return 'PNG 预览'
   return '未加载'
 })
@@ -142,37 +157,52 @@ function mapWhenStyleReady(callback: () => void) {
 function orderAnalysisLayers() {
   const instance = map.value
   if (!instance?.isStyleLoaded()) return
+  if (instance.getLayer('source-tiles')) instance.moveLayer('source-tiles')
+  if (instance.getLayer('vegetation-result-preview')) instance.moveLayer('vegetation-result-preview')
   if (instance.getLayer('vegetation-result')) instance.moveLayer('vegetation-result')
   if (instance.getLayer('source-footprint-line')) instance.moveLayer('source-footprint-line')
+}
+
+function removeLayerAndSource(layerId: string, sourceId = layerId) {
+  const instance = map.value
+  if (!instance) return
+  if (instance.getLayer(layerId)) instance.removeLayer(layerId)
+  if (instance.getSource(sourceId)) instance.removeSource(sourceId)
+}
+
+function boundsIntersect(left: [number, number, number, number], right: [number, number, number, number]) {
+  return left[0] <= right[2] && left[2] >= right[0] && left[1] <= right[3] && left[3] >= right[1]
+}
+
+function isBoundsInViewport(bounds: [number, number, number, number] | null) {
+  const instance = map.value
+  if (!instance || !bounds) return false
+  const mapBounds = instance.getBounds()
+  const visible: [number, number, number, number] = [
+    mapBounds.getWest(),
+    mapBounds.getSouth(),
+    mapBounds.getEast(),
+    mapBounds.getNorth(),
+  ]
+  return boundsIntersect(bounds, visible)
+}
+
+function refreshTileDemand() {
+  sourceTilesInView.value = Boolean(layerState.sourcePreview && isBoundsInViewport(sourceBounds.value))
+  resultTilesInView.value = Boolean(layerState.result && isBoundsInViewport(resultBounds.value))
 }
 
 function syncSourceLayer() {
   const instance = mapWhenStyleReady(syncSourceLayer)
   if (!instance) return
-  if (instance.getLayer('source-preview')) instance.removeLayer('source-preview')
-  if (instance.getSource('source-preview')) instance.removeSource('source-preview')
+  removeLayerAndSource('source-tiles')
+  removeLayerAndSource('source-preview')
   if (instance.getLayer('source-footprint-line')) instance.removeLayer('source-footprint-line')
   if (instance.getLayer('source-footprint-fill')) instance.removeLayer('source-footprint-fill')
   if (instance.getSource('source-footprint')) instance.removeSource('source-footprint')
   if (!sourceBounds.value) return
   const [west, south, east, north] = sourceBounds.value
-  if (assetTileUrl.value) {
-    const resultLayerId = instance.getLayer('vegetation-result') ? 'vegetation-result' : undefined
-    instance.addSource('source-preview', {
-      type: 'raster',
-      tiles: [assetTileUrl.value],
-      tileSize: 256,
-    })
-    instance.addLayer({
-      id: 'source-preview',
-      type: 'raster',
-      source: 'source-preview',
-      paint: {
-        'raster-opacity': shouldShowSourcePreview() ? 0.92 : 0,
-        'raster-fade-duration': 0,
-      },
-    }, resultLayerId)
-  } else if (assetPreviewUrl.value) {
+  if (!assetTileUrl.value && assetPreviewUrl.value) {
     const resultLayerId = instance.getLayer('vegetation-result') ? 'vegetation-result' : undefined
     instance.addSource('source-preview', {
       type: 'image',
@@ -188,6 +218,28 @@ function syncSourceLayer() {
       id: 'source-preview',
       type: 'raster',
       source: 'source-preview',
+      paint: {
+        'raster-opacity': shouldShowSourcePreview() ? 0.92 : 0,
+        'raster-fade-duration': 0,
+      },
+    }, resultLayerId)
+  }
+  if (assetTileUrl.value) {
+    const resultLayerId = instance.getLayer('vegetation-result-preview')
+      ? 'vegetation-result-preview'
+      : instance.getLayer('vegetation-result')
+        ? 'vegetation-result'
+        : undefined
+    instance.addSource('source-tiles', {
+      type: 'raster',
+      tiles: [assetTileUrl.value],
+      tileSize: 256,
+      bounds: [west, south, east, north],
+    })
+    instance.addLayer({
+      id: 'source-tiles',
+      type: 'raster',
+      source: 'source-tiles',
       paint: {
         'raster-opacity': shouldShowSourcePreview() ? 0.92 : 0,
         'raster-fade-duration': 0,
@@ -220,7 +272,7 @@ function syncSourceLayer() {
     source: 'source-footprint',
     paint: {
       'fill-color': '#58a6ff',
-      'fill-opacity': shouldShowFootprint() && !assetPreviewUrl.value ? 0.16 : 0,
+      'fill-opacity': shouldShowFootprint() && !assetPreviewUrl.value && !assetTileUrl.value ? 0.16 : 0,
     },
   }, resultLayerId)
   instance.addLayer({
@@ -239,20 +291,14 @@ function syncSourceLayer() {
 function syncProductLayer() {
   const instance = mapWhenStyleReady(syncProductLayer)
   if (!instance) return
-  if (instance.getLayer('vegetation-result')) instance.removeLayer('vegetation-result')
-  if (instance.getSource('vegetation-result')) instance.removeSource('vegetation-result')
+  removeLayerAndSource('vegetation-result')
+  removeLayerAndSource('vegetation-result-preview')
   const tileSourceUrl = resultTileUrl.value
-  const imagePreviewUrl = previewUrl.value
+  const imagePreviewUrl = resultTileUrl.value ? null : previewUrl.value
   if (!props.product || (!tileSourceUrl && !imagePreviewUrl) || !resultBounds.value) return
   const [west, south, east, north] = resultBounds.value
-  if (tileSourceUrl) {
-    instance.addSource('vegetation-result', {
-      type: 'raster',
-      tiles: [tileSourceUrl],
-      tileSize: 256,
-    })
-  } else if (imagePreviewUrl) {
-    instance.addSource('vegetation-result', {
+  if (imagePreviewUrl) {
+    instance.addSource('vegetation-result-preview', {
       type: 'image',
       url: imagePreviewUrl,
       coordinates: [
@@ -262,30 +308,51 @@ function syncProductLayer() {
         [west, south],
       ],
     })
+    instance.addLayer({
+      id: 'vegetation-result-preview',
+      type: 'raster',
+      source: 'vegetation-result-preview',
+      paint: {
+        'raster-opacity': shouldShowResult() ? Math.max(opacity.value * 0.62, 0.22) : 0,
+        'raster-fade-duration': 0,
+      },
+    })
   }
-  instance.addLayer({
-    id: 'vegetation-result',
-    type: 'raster',
-    source: 'vegetation-result',
-    paint: {
-      'raster-opacity': shouldShowResult() ? opacity.value : 0,
-      'raster-fade-duration': 0,
-    },
-  })
+  if (tileSourceUrl) {
+    instance.addSource('vegetation-result', {
+      type: 'raster',
+      tiles: [tileSourceUrl],
+      tileSize: 256,
+      bounds: [west, south, east, north],
+    })
+    instance.addLayer({
+      id: 'vegetation-result',
+      type: 'raster',
+      source: 'vegetation-result',
+      paint: {
+        'raster-opacity': shouldShowResult() ? opacity.value : 0,
+        'raster-fade-duration': 0,
+      },
+    })
+  }
   orderAnalysisLayers()
 }
 
-function visibleBoundsForMode(mode: CompareMode = compareMode.value) {
-  if (mode === 'before') return sourceBounds.value
-  if (mode === 'after') return resultBounds.value ?? sourceBounds.value
-  return resultBounds.value ?? sourceBounds.value
+function adaptiveMaxZoom(bounds: [number, number, number, number]) {
+  const [west, south, east, north] = bounds
+  const span = Math.max(Math.abs(east - west), Math.abs(north - south))
+  if (span < 0.02) return DEFAULT_LOCATE_MAX_ZOOM
+  if (span < 0.08) return 15
+  if (span < 0.5) return 13
+  if (span < 2) return 11
+  return 9
 }
 
-function fitBounds(bounds: [number, number, number, number] | null) {
+function fitBounds(bounds: [number, number, number, number] | null, reason: 'auto' | 'manual' = 'manual') {
   const instance = map.value
   if (!instance) return
   if (!instance.isStyleLoaded()) {
-    instance.once('idle', () => fitBounds(bounds))
+    instance.once('idle', () => fitBounds(bounds, reason))
     return
   }
   if (!bounds) return
@@ -294,31 +361,41 @@ function fitBounds(bounds: [number, number, number, number] | null) {
     [west, south],
     [east, north],
   ]
-  const options = { padding: 72, duration: 900, maxZoom: 14 }
+  const maxZoom = adaptiveMaxZoom(bounds)
+  const options = { padding: 72, duration: 650, maxZoom }
   const center: [number, number] = [(west + east) / 2, (south + north) / 2]
   const isSmallFootprint = Math.max(Math.abs(east - west), Math.abs(north - south)) < 0.05
-  const moveToTarget = (duration: number) => {
-    if (isSmallFootprint) {
-      instance.easeTo({ center, zoom: 14, duration })
-      return
-    }
-    instance.fitBounds(targetBounds, { ...options, duration })
+  if (isSmallFootprint) {
+    instance.easeTo({ center, zoom: maxZoom, duration: options.duration })
+  } else {
+    instance.fitBounds(targetBounds, options)
   }
-  // MapLibre 的 fitBounds 是命令式外部状态；图像源刚添加时再补两次定位，避免被瓦片重绘时机吞掉。
-  moveToTarget(900)
-  window.requestAnimationFrame(() => moveToTarget(0))
-  window.setTimeout(() => moveToTarget(0), 300)
+  window.setTimeout(() => {
+    refreshTileDemand()
+    syncMapLayers()
+  }, options.duration + 80)
+  if (reason === 'auto') pendingSourceLocateKey = ''
 }
 
-function fitActiveBounds(mode: CompareMode = compareMode.value) {
-  fitBounds(visibleBoundsForMode(mode))
+function locateManually(bounds: [number, number, number, number] | null) {
+  fitBounds(bounds, 'manual')
 }
 
 function syncMapLayers() {
+  refreshTileDemand()
   syncBasemapVisibility()
   syncSourceLayer()
   syncProductLayer()
-  fitActiveBounds()
+}
+
+function autoLocate(bounds: [number, number, number, number] | null) {
+  if (!bounds) return
+  fitBounds(bounds, 'auto')
+}
+
+function locateImportedAssetIfPending() {
+  if (!pendingSourceLocateKey) return
+  autoLocate(sourceBounds.value)
 }
 
 function showOnlyBasemap() {
@@ -332,29 +409,50 @@ function showAnalysisLayers() {
   layerState.sourcePreview = true
   layerState.footprint = true
   layerState.result = true
-  fitActiveBounds()
+  syncMapLayers()
 }
 
 function setCompareMode(mode: CompareMode) {
   compareMode.value = mode
   syncMapLayers()
-  fitActiveBounds(mode)
 }
 
-watch(() => props.product, syncMapLayers)
-watch(() => props.asset, syncMapLayers)
-watch(sourceBounds, syncMapLayers)
+watch(
+  () => props.asset?.objectKey ?? props.asset?.localPath ?? '',
+  (key) => {
+    syncMapLayers()
+    if (!key || seenSourceKeys.has(key)) return
+    seenSourceKeys.add(key)
+    pendingSourceLocateKey = key
+    locateImportedAssetIfPending()
+  },
+  { immediate: true },
+)
+watch(
+  () => props.product?.objectKey ?? props.product?.path ?? '',
+  () => {
+    syncMapLayers()
+  },
+)
+watch(sourceBounds, () => {
+  syncMapLayers()
+  locateImportedAssetIfPending()
+})
 watch(activeBasemap, syncBasemapVisibility)
 watch(layerState, () => {
+  syncMapLayers()
   syncBasemapVisibility()
   if (map.value?.getLayer('source-preview')) {
     map.value.setPaintProperty('source-preview', 'raster-opacity', shouldShowSourcePreview() ? 0.92 : 0)
+  }
+  if (map.value?.getLayer('source-tiles')) {
+    map.value.setPaintProperty('source-tiles', 'raster-opacity', shouldShowSourcePreview() ? 0.92 : 0)
   }
   if (map.value?.getLayer('source-footprint-fill')) {
     map.value.setPaintProperty(
       'source-footprint-fill',
       'fill-opacity',
-      shouldShowFootprint() && !assetPreviewUrl.value ? 0.16 : 0,
+      shouldShowFootprint() && !assetPreviewUrl.value && !assetTileUrl.value ? 0.16 : 0,
     )
   }
   if (map.value?.getLayer('source-footprint-line')) {
@@ -363,13 +461,17 @@ watch(layerState, () => {
   if (map.value?.getLayer('vegetation-result')) {
     map.value.setPaintProperty('vegetation-result', 'raster-opacity', shouldShowResult() ? opacity.value : 0)
   }
+  if (map.value?.getLayer('vegetation-result-preview')) {
+    map.value.setPaintProperty('vegetation-result-preview', 'raster-opacity', shouldShowResult() ? Math.max(opacity.value * 0.62, 0.22) : 0)
+  }
 })
 watch(compareMode, () => {
+  syncMapLayers()
   if (map.value?.getLayer('source-footprint-fill')) {
     map.value.setPaintProperty(
       'source-footprint-fill',
       'fill-opacity',
-      shouldShowFootprint() && !assetPreviewUrl.value ? 0.16 : 0,
+      shouldShowFootprint() && !assetPreviewUrl.value && !assetTileUrl.value ? 0.16 : 0,
     )
   }
   if (map.value?.getLayer('source-footprint-line')) {
@@ -393,6 +495,20 @@ watch(compareMode, () => {
       shouldShowSourcePreview() ? 0.92 : 0,
     )
   }
+  if (map.value?.getLayer('source-tiles')) {
+    map.value.setPaintProperty(
+      'source-tiles',
+      'raster-opacity',
+      shouldShowSourcePreview() ? 0.92 : 0,
+    )
+  }
+  if (map.value?.getLayer('vegetation-result-preview')) {
+    map.value.setPaintProperty(
+      'vegetation-result-preview',
+      'raster-opacity',
+      shouldShowResult() ? Math.max(opacity.value * 0.62, 0.22) : 0,
+    )
+  }
 })
 watch(opacity, (value) => {
   if (map.value?.getLayer('vegetation-result')) {
@@ -400,6 +516,13 @@ watch(opacity, (value) => {
       'vegetation-result',
       'raster-opacity',
       shouldShowResult() ? value : 0,
+    )
+  }
+  if (map.value?.getLayer('vegetation-result-preview')) {
+    map.value.setPaintProperty(
+      'vegetation-result-preview',
+      'raster-opacity',
+      shouldShowResult() ? Math.max(value * 0.62, 0.22) : 0,
     )
   }
 })
@@ -466,7 +589,13 @@ onMounted(() => {
   instance.on('mousemove', (event) => {
     cursorCoordinates.value = `${event.lngLat.lng.toFixed(5)}, ${event.lngLat.lat.toFixed(5)}`
   })
-  instance.on('load', syncMapLayers)
+  instance.on('moveend', () => {
+    refreshTileDemand()
+  })
+  instance.on('load', () => {
+    syncMapLayers()
+    locateImportedAssetIfPending()
+  })
   map.value = instance
   if (import.meta.env.DEV) {
     ;(window as Window & { __vipMap?: Map }).__vipMap = instance
@@ -525,7 +654,7 @@ onBeforeUnmount(() => {
           <input v-model="layerState.sourcePreview" type="checkbox" :disabled="!sourceBounds" />
           <strong>{{ sourceLayerLabel }}</strong>
         </label>
-        <button type="button" class="zoom-button" :disabled="!sourceBounds" @click="fitBounds(sourceBounds)">
+        <button type="button" class="zoom-button" :disabled="!sourceBounds" @click="locateManually(sourceBounds)">
           定位
         </button>
       </div>
@@ -534,16 +663,30 @@ onBeforeUnmount(() => {
           <input v-model="layerState.result" type="checkbox" :disabled="!product" />
           <strong>计算结果</strong>
         </label>
-        <button type="button" class="zoom-button" :disabled="!resultBounds" @click="fitBounds(resultBounds)">
+        <button type="button" class="zoom-button" :disabled="!resultBounds" @click="locateManually(resultBounds)">
           定位
         </button>
+      </div>
+      <div v-if="(products?.length ?? 0) > 1" class="control-group">
+        <span>结果指数</span>
+        <div class="product-switcher">
+          <button
+            v-for="(item, index) in products"
+            :key="`${item.index}-${item.path}`"
+            type="button"
+            :class="{ active: index === activeProductIndex }"
+            @click="emit('selectProduct', index)"
+          >
+            {{ item.index.toUpperCase() }}
+          </button>
+        </div>
       </div>
       <div class="layer-row">
         <label>
           <input v-model="layerState.footprint" type="checkbox" :disabled="!sourceBounds" />
           <strong>范围框</strong>
         </label>
-        <button type="button" class="zoom-button" :disabled="!sourceBounds" @click="fitBounds(sourceBounds)">
+        <button type="button" class="zoom-button" :disabled="!sourceBounds" @click="locateManually(sourceBounds)">
           定位
         </button>
       </div>
@@ -807,7 +950,8 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
-.segmented-control button {
+.segmented-control button,
+.product-switcher button {
   min-height: 34px;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -816,15 +960,30 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.segmented-control button.active {
+.segmented-control button.active,
+.product-switcher button.active {
   border-color: var(--accent-strong);
   background: var(--surface-hover);
   color: var(--accent-strong);
 }
 
-.segmented-control button:disabled {
+.segmented-control button:disabled,
+.product-switcher button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.product-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.product-switcher button {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .opacity-control input {

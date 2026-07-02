@@ -1,3 +1,5 @@
+<!-- frontend/src/components/JobProgressPanel.vue -->
+<!-- 文件说明：任务管理器列表、进度指标和多指数结果切换入口。 -->
 <script setup lang="ts">
 import type { JobRecord, RasterResult } from '@/types/platform'
 
@@ -25,6 +27,45 @@ function statusLabel(status: string) {
     }[status] ?? status
   )
 }
+
+function formatDuration(seconds?: number | null) {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '估算中'
+  if (seconds < 1) return '<1s'
+  const minutes = Math.floor(seconds / 60)
+  const rest = Math.round(seconds % 60)
+  return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`
+}
+
+function elapsedSeconds(job: JobRecord) {
+  const start = new Date(job.started_at ?? job.created_at).getTime()
+  const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now()
+  return Math.max(0, (end - start) / 1000)
+}
+
+function estimatedEta(job: JobRecord) {
+  if (job.eta_seconds !== null && job.eta_seconds !== undefined) return job.eta_seconds
+  if (!['accepted', 'running'].includes(job.status) || job.progress <= 0) return null
+  const elapsed = elapsedSeconds(job)
+  return Math.max(0, elapsed * (100 - job.progress) / job.progress)
+}
+
+function estimatedThroughput(job: JobRecord) {
+  if (job.throughput !== null && job.throughput !== undefined) return `${job.throughput.toFixed(2)} 窗口/s`
+  const current = job.current ?? 0
+  const elapsed = elapsedSeconds(job)
+  if (current > 0 && elapsed > 0) return `${(current / elapsed).toFixed(2)} 窗口/s`
+  return '待采样'
+}
+
+function productCount(job: JobRecord) {
+  return job.result?.products?.length ?? job.index_count ?? 0
+}
+
+function isProductActive(job: JobRecord, index: number, activeResult: RasterResult | null, activeProductIndex: number) {
+  const product = job.result?.products?.[index]
+  const activeProduct = activeResult?.products?.[activeProductIndex]
+  return Boolean(product && activeProduct && product.path === activeProduct.path)
+}
 </script>
 
 <template>
@@ -32,7 +73,7 @@ function statusLabel(status: string) {
     <header>
       <div>
         <span>COMPUTE QUEUE</span>
-        <h2>任务脉冲</h2>
+        <h2>任务管理器</h2>
       </div>
       <strong>{{ jobs.length.toString().padStart(2, '0') }}</strong>
     </header>
@@ -53,6 +94,32 @@ function statusLabel(status: string) {
           <span>{{ job.message }}</span>
           <strong>{{ job.progress.toFixed(0) }}%</strong>
         </div>
+        <dl class="job-facts">
+          <div>
+            <dt>ETA</dt>
+            <dd>{{ formatDuration(estimatedEta(job)) }}</dd>
+          </div>
+          <div>
+            <dt>速率</dt>
+            <dd>{{ estimatedThroughput(job) }}</dd>
+          </div>
+          <div>
+            <dt>已用</dt>
+            <dd>{{ formatDuration(elapsedSeconds(job)) }}</dd>
+          </div>
+          <div>
+            <dt>引擎</dt>
+            <dd>{{ (job.result?.actualEngine ?? job.engine ?? 'auto').toUpperCase() }}</dd>
+          </div>
+          <div>
+            <dt>指数</dt>
+            <dd>{{ productCount(job) || '待定' }}</dd>
+          </div>
+          <div>
+            <dt>窗口</dt>
+            <dd>{{ job.current ?? 0 }} / {{ job.total ?? 0 }}</dd>
+          </div>
+        </dl>
         <div class="job-actions">
           <button
             type="button"
@@ -75,9 +142,7 @@ function statusLabel(status: string) {
             :key="`${job.id}-${product.index}`"
             type="button"
             :class="{
-              active:
-                activeResult === job.result &&
-                activeProductIndex === index,
+              active: isProductActive(job, index, activeResult, activeProductIndex),
             }"
             @click="emit('selectJobProduct', job, index)"
           >
@@ -191,6 +256,40 @@ function statusLabel(status: string) {
 .job-meta strong {
   color: var(--text-1);
   font-family: var(--font-mono);
+}
+
+.job-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 9px 0 0;
+}
+
+.job-facts div {
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.job-facts dt,
+.job-facts dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-facts dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.job-facts dd {
+  margin-top: 3px;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .job-actions {

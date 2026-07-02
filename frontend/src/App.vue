@@ -1,3 +1,5 @@
+<!-- frontend/src/App.vue -->
+<!-- 文件说明：应用主壳，编排地图、Agent、任务管理器和统计面板联动。 -->
 <script setup lang="ts">
 import { defineAsyncComponent, onBeforeUnmount, onMounted, shallowRef } from 'vue'
 import AgentDrawer from '@/components/AgentDrawer.vue'
@@ -48,7 +50,8 @@ async function refreshJobs() {
 }
 
 async function selectJobResult(job: JobRecord, productIndex = 0) {
-  const result = await api.getResults(job.id)
+  const result = job.result ?? await api.getResults(job.id)
+  store.setJobs(store.jobs.map((item) => (item.id === job.id ? { ...item, result } : item)))
   store.setActiveResult(result, productIndex)
   navigateTo('workspace')
 }
@@ -104,6 +107,9 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
           v-model:opacity="opacity"
           :asset="store.asset.selected"
           :product="store.activeProduct"
+          :products="store.activeProducts"
+          :active-product-index="store.activeProductIndex"
+          @select-product="store.selectActiveProduct"
         />
         <Transition name="panel">
           <AgentDrawer v-if="store.ui.isAgentVisible" />

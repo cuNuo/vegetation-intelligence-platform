@@ -1,3 +1,5 @@
+<!-- frontend/src/components/AssetToolbar.vue -->
+<!-- 文件说明：影像上传、导入队列、波段映射和批量任务提交工具栏。 -->
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef } from 'vue'
 import { usePlatformApi } from '@/composables/usePlatformApi'
@@ -14,6 +16,7 @@ const isMappingOpen = shallowRef(false)
 const uploadingFileName = shallowRef('')
 const currentUploadProgress = shallowRef(0)
 const totalUploadProgress = shallowRef(0)
+const uploadStage = shallowRef<'idle' | 'uploading' | 'received' | 'metadata' | 'preview' | 'located'>('idle')
 const message = shallowRef('选择或拖入GeoTIFF，系统会保存到后端输入目录')
 const bandLabels: Record<string, string> = {
   blue: 'Blue',
@@ -54,6 +57,17 @@ const bandRows = computed(() =>
   })),
 )
 const batchIndices = computed(() => store.activePlan?.selectedIndices ?? ['ndvi'])
+const uploadStageLabel = computed(() => {
+  const labels = {
+    idle: '等待影像',
+    uploading: '上传中',
+    received: '后端接收完成',
+    metadata: '读取元数据',
+    preview: '生成预览/瓦片就绪',
+    located: '已定位',
+  }
+  return labels[uploadStage.value]
+})
 const pyramidLevels = computed(() => {
   const asset = selectedAsset.value
   if (!asset) return []
@@ -84,6 +98,7 @@ async function uploadFiles(files: FileList | File[]) {
   isUploading.value = true
   currentUploadProgress.value = 0
   totalUploadProgress.value = 0
+  uploadStage.value = 'uploading'
   message.value = `正在上传 ${geotiffs.length} 个影像…`
   try {
     const uploaded: UploadedAsset[] = []
@@ -92,13 +107,26 @@ async function uploadFiles(files: FileList | File[]) {
       uploaded.push(await api.uploadAsset(file, (progress) => {
         currentUploadProgress.value = progress
         totalUploadProgress.value = Math.round(((index + progress / 100) / geotiffs.length) * 100)
+        if (progress >= 100) {
+          uploadStage.value = 'metadata'
+          message.value = `正在解析影像元数据：${file.name}（${index + 1}/${geotiffs.length}）`
+          return
+        }
+        uploadStage.value = 'uploading'
         message.value = `正在上传 ${file.name}：${progress}%（${index + 1}/${geotiffs.length}）`
       }))
+      uploadStage.value = 'preview'
+      message.value = `预览与瓦片入口已就绪：${file.name}`
     }
+    uploadStage.value = 'received'
     store.addUploadedAssets(uploaded)
     totalUploadProgress.value = 100
-    message.value = `已导入 ${uploaded.length} 个影像，可执行批量处理`
+    uploadStage.value = 'located'
+    message.value = uploaded.length > 1
+      ? `已导入 ${uploaded.length} 个影像`
+      : `已导入 ${uploaded[0]?.filename ?? '影像'}`
   } catch (error) {
+    uploadStage.value = 'idle'
     message.value = error instanceof Error ? error.message : '影像上传失败'
   } finally {
     isUploading.value = false
@@ -187,13 +215,14 @@ function validateBandMapping() {
       <div class="asset-copy">
         <span class="eyebrow">RASTER INTAKE</span>
         <strong>{{ selectedAsset?.filename ?? '尚未导入影像' }}</strong>
-        <p>{{ message }}</p>
+        <p>
+          {{ isUploading
+            ? `${uploadStageLabel}：${currentUploadProgress}%${uploadingFileName ? ` / ${uploadingFileName}` : ''}`
+            : message }}
+        </p>
         <div v-if="isUploading || totalUploadProgress > 0" class="upload-progress">
           <span :style="{ width: `${totalUploadProgress}%` }" />
         </div>
-        <small v-if="isUploading" class="upload-detail">
-          {{ uploadingFileName }} / {{ currentUploadProgress }}%
-        </small>
       </div>
       <button class="primary-action" :disabled="isUploading" @click="openPicker">
         {{ isUploading ? '上传中…' : '选择影像' }}
@@ -291,8 +320,8 @@ function validateBandMapping() {
   grid-template-columns: minmax(min(100%, 460px), 1.45fr) repeat(3, minmax(min(100%, 180px), 0.7fr)) minmax(min(100%, 180px), 0.5fr);
   gap: 1px;
   min-width: 0;
-  min-height: clamp(78px, 7dvh, 112px);
-  overflow: visible;
+  min-height: clamp(88px, 8dvh, 108px);
+  overflow: clip;
   border: 1px solid var(--border);
   background: var(--border);
   transition: border-color 160ms ease, box-shadow 160ms ease;
@@ -324,14 +353,14 @@ function validateBandMapping() {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: clamp(10px, 1vw, 14px);
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
 .thumbnail {
   position: relative;
   display: grid;
-  width: clamp(46px, 3.6vw, 58px);
-  height: clamp(46px, 3.6vw, 58px);
+  width: clamp(42px, 3.2vw, 52px);
+  height: clamp(42px, 3.2vw, 52px);
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -380,8 +409,7 @@ function validateBandMapping() {
 }
 
 .asset-copy p,
-.asset-stat small,
-.upload-detail {
+.asset-stat small {
   display: block;
   margin: 5px 0 0;
   color: var(--text-3);
@@ -389,9 +417,22 @@ function validateBandMapping() {
   line-height: 1.45;
 }
 
+.asset-copy p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-stat small {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .upload-progress {
   height: 5px;
-  margin-top: 8px;
+  margin-top: 6px;
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -421,7 +462,10 @@ function validateBandMapping() {
 }
 
 .asset-stat {
-  padding: 12px 14px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 10px 12px;
 }
 
 .queue-list {

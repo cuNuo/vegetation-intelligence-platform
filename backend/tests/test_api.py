@@ -1,3 +1,5 @@
+# backend/tests/test_api.py
+# 文件说明：验证 OGC Process、上传、瓦片、Agent 与异步任务 API 契约。
 import time
 from pathlib import Path
 
@@ -269,6 +271,13 @@ def test_async_process_returns_job_and_results(sample_raster: Path) -> None:
         time.sleep(0.02)
 
     assert record["status"] == "successful"
+    assert record["started_at"]
+    assert record["finished_at"]
+    assert record["eta_seconds"] == 0
+    assert record["current"] == record["total"] >= 1
+    assert record["throughput"] is not None
+    assert record["engine"] == "numpy"
+    assert record["index_count"] == 1
     results = client.get(f"/jobs/{job_id}/results")
     assert results.status_code == 200
     assert results.json()["products"][0]["index"] == "ndvi"

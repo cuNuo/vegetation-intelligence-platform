@@ -1,4 +1,7 @@
 
+// frontend/src/types/platform.ts
+// 文件说明：前后端共享的平台 API 响应类型与遥感业务数据结构。
+
 export interface RasterMetadata {
   path: string
   width: number
@@ -164,6 +167,14 @@ export interface JobRecord {
   message: string
   created_at: string
   updated_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  eta_seconds?: number | null
+  throughput?: number | null
+  current?: number
+  total?: number
+  engine?: string
+  index_count?: number
   error: string | null
   result?: RasterResult
 }

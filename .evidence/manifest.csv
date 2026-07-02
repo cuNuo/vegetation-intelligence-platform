@@ -17,3 +17,5 @@ output/playwright/multi-index-results.png,visual-qa,passed,bajiepart1经Agent提
 output/playwright/validate-ui.cjs,test-artifact,passed,bajiepart1端到端浏览器验证脚本
 output/playwright/tif-tile-overlay-results.png,visual-qa,passed,bajiepart1输入TIF与输出GNDVI TIF动态瓦片叠加截图
 output/playwright/validate-tif-tiles.cjs,test-artifact,passed,bajiepart1输入/输出TIF瓦片叠加端到端验证脚本
+.evidence/active/20260702-1216-上传地图任务Agent体验优化.md,task-log,active,上传分阶段反馈、地图渐进瓦片、任务管理器与Agent布局优化记录
+20260702-1216,上传地图任务Agent体验优化,task-log,frontend/upload-map-task-agent-progressive-ux,无,active,.evidence/active/20260702-1216-上传地图任务Agent体验优化.md
