@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, shallowRef, watch } from 'vue'
+import { computed, nextTick, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import { usePlatformApi } from '@/composables/usePlatformApi'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type {
@@ -7,6 +7,7 @@ import type {
   AgentExecutionSheet,
   AgentLLMConfig,
   AgentResultInterpretation,
+  AgentStreamEvent,
 } from '@/types/platform'
 
 const store = useWorkspaceStore()
@@ -45,6 +46,7 @@ const executionSheet = reactive<AgentExecutionSheet>({
   blockSize: 1024,
   priority: 3,
 })
+const timelineRef = useTemplateRef<HTMLElement>('timeline')
 const knowledgeDraft = reactive({
   title: '植被指数适用场景说明',
   content: '',
@@ -69,9 +71,21 @@ const activeJob = computed(() =>
   store.activePlan?.jobId ? store.jobs.find((job) => job.id === store.activePlan?.jobId) : null,
 )
 const conversationEvents = computed<AgentConversationEvent[]>(() => {
-  if (interpretation.value?.conversation?.length) return interpretation.value.conversation
-  if (store.activePlan?.conversation?.length) return store.activePlan.conversation
-  return localConversation.value
+  const persisted = interpretation.value?.conversation?.length
+    ? interpretation.value.conversation
+    : store.activePlan?.conversation ?? []
+  const localOnly = localConversation.value.filter(
+    (local) =>
+      !persisted.some(
+        (event) =>
+          event.role === local.role &&
+          event.eventType === local.eventType &&
+          event.content === local.content,
+      ),
+  )
+  return [...localOnly, ...persisted].sort(
+    (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+  )
 })
 const statusLine = computed(() => {
   if (isThinking.value) return '正在检索指数库、网络资料和可执行工具'
@@ -102,10 +116,11 @@ function syncConversation(events?: AgentConversationEvent[]) {
 }
 
 function appendLocalMessage(role: AgentConversationEvent['role'], content: string, eventType = 'question') {
+  const id = `${Date.now()}-${localConversation.value.length}`
   localConversation.value = [
     ...localConversation.value,
     {
-      id: `${Date.now()}-${localConversation.value.length}`,
+      id,
       role,
       eventType,
       content,
@@ -113,6 +128,92 @@ function appendLocalMessage(role: AgentConversationEvent['role'], content: strin
       createdAt: new Date().toISOString(),
     },
   ]
+  void scrollConversationToLatest()
+  return id
+}
+
+async function scrollConversationToLatest() {
+  await nextTick()
+  const element = timelineRef.value
+  if (element) element.scrollTop = element.scrollHeight
+}
+
+function appendStatus(content: string, eventType = 'execution') {
+  appendLocalMessage('system', content, eventType)
+}
+
+function extractErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+function handlePlanStreamEvent(event: AgentStreamEvent) {
+  if (event.event === 'status' || event.event === 'done') {
+    const message = typeof event.data.message === 'string' ? event.data.message : '智能体状态已更新'
+    appendStatus(message, 'plan')
+    return
+  }
+  if (event.event === 'plan') {
+    const plan = event.data as unknown as NonNullable<typeof store.activePlan>
+    store.setActivePlan(plan)
+    resetExecutionSheet()
+    if (!plan.conversation.length) appendLocalMessage('assistant', plan.summary, 'plan')
+    return
+  }
+  if (event.event === 'error') {
+    const message = typeof event.data.message === 'string' ? event.data.message : '方案生成失败'
+    errorMessage.value = message
+    appendStatus(`方案生成失败：${message}`, 'plan')
+  }
+}
+
+async function handleConfirmStreamEvent(event: AgentStreamEvent) {
+  if (event.event === 'status' || event.event === 'done') {
+    const message = typeof event.data.message === 'string' ? event.data.message : '任务状态已更新'
+    executionMessage.value = message
+    appendStatus(message)
+    return
+  }
+  if (event.event === 'plan') {
+    const plan = event.data as unknown as NonNullable<typeof store.activePlan>
+    store.setActivePlan(plan)
+    syncConversation(plan.conversation)
+    return
+  }
+  if (event.event === 'job') {
+    const job = event.data as unknown as NonNullable<typeof activeJob.value>
+    const merged = [job, ...store.jobs.filter((item) => item.id !== job.id)]
+    store.setJobs(merged)
+    executionMessage.value = `${job.status} / ${job.progress}% / ${job.message}`
+    appendStatus(`任务 ${job.id.slice(0, 8)}：${executionMessage.value}`)
+    return
+  }
+  if (event.event === 'result') {
+    const result = event.data as unknown as NonNullable<NonNullable<typeof activeJob.value>['result']>
+    if (!result?.products?.length) return
+    const jobId = store.activePlan?.jobId
+    if (jobId) {
+      store.setJobs(
+        store.jobs.map((job) => (job.id === jobId ? { ...job, result } : job)),
+      )
+    }
+    if (result.products[0]) store.setActiveProduct(result.products[0])
+    interpretation.value = await api.interpretResults(
+      result.products,
+      lastUserGoal.value,
+      currentLlmConfig(),
+      store.activePlan?.sessionId,
+    )
+    syncConversation(interpretation.value.conversation)
+    executionMessage.value = '任务完成，已基于统计信息生成建议。'
+    appendStatus(executionMessage.value, 'interpretation')
+    return
+  }
+  if (event.event === 'error') {
+    const message = typeof event.data.message === 'string' ? event.data.message : '任务执行失败'
+    errorMessage.value = message
+    executionMessage.value = `任务失败：${message}`
+    appendStatus(executionMessage.value)
+  }
 }
 
 function resetExecutionSheet() {
@@ -174,18 +275,18 @@ async function generatePlan() {
   errorMessage.value = ''
   interpretation.value = null
   try {
-    const plan = await api.createPlan(message, store.asset.availableBands, {
+    await api.createPlanStream(message, store.asset.availableBands, {
       llm: currentLlmConfig(),
       enableWebSearch: enableWebSearch.value,
       customIndex: customIndexEnabled.value ? { ...customIndex } : null,
       sessionId: store.activePlan?.sessionId,
-    })
-    store.setActivePlan(plan)
-    resetExecutionSheet()
-    if (!plan.conversation.length) appendLocalMessage('assistant', plan.summary, 'plan')
+      rasterWidth: store.asset.selected?.metadata.width,
+      rasterHeight: store.asset.selected?.metadata.height,
+    }, handlePlanStreamEvent)
     prompt.value = ''
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '方案生成失败'
+    errorMessage.value = extractErrorMessage(error, '方案生成失败')
+    appendStatus(`方案生成失败：${errorMessage.value}`, 'plan')
   } finally {
     isThinking.value = false
   }
@@ -196,19 +297,24 @@ async function confirmPlan() {
     errorMessage.value = '请先通过上方按钮或拖拽导入GeoTIFF影像'
     return
   }
+  if (!store.asset.availableBands.length) {
+    errorMessage.value = '当前影像没有可用逻辑波段，请先导入有效GeoTIFF'
+    appendStatus(errorMessage.value)
+    return
+  }
   isThinking.value = true
+  errorMessage.value = ''
   try {
-    const plan = await api.confirmPlan(
+    await api.confirmPlanStream(
       store.activePlan.id,
       store.asset.localPath,
       store.asset.bandMapping,
       { ...executionSheet },
+      handleConfirmStreamEvent,
     )
-    store.setActivePlan(plan)
-    observedJobId.value = plan.jobId ?? ''
-    executionMessage.value = '任务已提交，正在轮询执行状态。'
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '任务提交失败'
+    errorMessage.value = extractErrorMessage(error, '任务提交失败')
+    appendStatus(`任务提交失败：${errorMessage.value}`)
   } finally {
     isThinking.value = false
   }
@@ -217,6 +323,13 @@ async function confirmPlan() {
 watch(
   () => store.activePlan?.id,
   () => resetExecutionSheet(),
+)
+
+watch(
+  () => conversationEvents.value.length,
+  () => {
+    void scrollConversationToLatest()
+  },
 )
 
 watch(
@@ -308,13 +421,13 @@ async function interpretResults() {
           {{ store.activePlan?.sessionId ? `SESSION ${store.activePlan.sessionId.slice(0, 8)}` : 'NEW SESSION' }}
         </small>
       </div>
-      <div v-if="conversationEvents.length" class="message-timeline">
+      <div v-if="conversationEvents.length" ref="timeline" class="message-timeline">
         <article
           v-for="event in conversationEvents"
           :key="event.id"
           :class="['timeline-message', event.role]"
         >
-          <span>{{ event.role === 'user' ? 'YOU' : 'AI' }}</span>
+          <span>{{ event.role === 'user' ? 'YOU' : event.role === 'system' ? 'RUN' : 'AI' }}</span>
           <div>
             <strong>{{ eventTitle(event) }}</strong>
             <p>{{ event.content }}</p>
@@ -470,13 +583,20 @@ async function interpretResults() {
         class="confirm-button"
         :disabled="
           !store.activePlan.canExecute ||
+          !store.asset.localPath ||
           !executionSheet.indices.length ||
           isThinking ||
           store.activePlan.status === 'confirmed'
         "
         @click="confirmPlan"
       >
-        {{ store.activePlan.status === 'confirmed' ? `任务已提交 ${store.activePlan.jobId}` : '确认并提交计算' }}
+        {{
+          store.activePlan.status === 'confirmed'
+            ? `任务已提交 ${store.activePlan.jobId}`
+            : !store.asset.localPath
+              ? '请先导入影像'
+              : '确认并提交计算'
+        }}
       </button>
       <div v-if="store.activePlan.jobId" class="job-status-card">
         <div class="section-title compact">
@@ -722,8 +842,8 @@ async function interpretResults() {
 
 .conversation {
   display: flex;
-  flex: 1;
-  min-height: 260px;
+  height: min(620px, calc(100dvh - 190px));
+  min-height: 430px;
   flex-direction: column;
   gap: 12px;
   padding: 20px 0;
@@ -760,7 +880,7 @@ async function interpretResults() {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 0;
   padding: 9px 10px;
   border: 1px solid var(--border);
   background: var(--surface-hover);
@@ -785,10 +905,12 @@ async function interpretResults() {
 .message-timeline {
   display: grid;
   flex: 1;
+  min-height: 0;
   gap: 8px;
-  margin-top: 12px;
+  align-content: start;
+  margin-top: 0;
   overflow: auto;
-  padding-right: 3px;
+  padding: 2px 3px 8px 0;
 }
 
 .timeline-message {
@@ -841,7 +963,7 @@ async function interpretResults() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .runtime-summary span {
@@ -925,12 +1047,10 @@ async function interpretResults() {
 }
 
 .prompt-box {
-  position: sticky;
-  bottom: 12px;
   margin-top: 0;
   border: 1px solid var(--border-strong);
   background: var(--surface-0);
-  box-shadow: 0 -18px 34px color-mix(in srgb, var(--surface-1) 92%, transparent);
+  box-shadow: 0 -14px 30px color-mix(in srgb, var(--surface-1) 88%, transparent);
 }
 
 .prompt-box textarea {

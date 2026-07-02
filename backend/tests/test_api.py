@@ -42,6 +42,23 @@ def test_agent_plan_endpoint_is_safe_by_default() -> None:
     assert "jobId" not in plan
 
 
+def test_agent_plan_stream_returns_sse_events() -> None:
+    with client.stream(
+        "POST",
+        "/api/agent/plan/stream",
+        json={
+            "message": "我想分析农田长势",
+            "availableBands": ["blue", "green", "red", "nir"],
+            "enableWebSearch": False,
+        },
+    ) as response:
+        body = response.read().decode("utf-8")
+    assert response.status_code == 200
+    assert "event: status" in body
+    assert "event: plan" in body
+    assert "event: done" in body
+
+
 def test_agent_knowledge_import_enters_rag() -> None:
     imported = client.post(
         "/api/agent/knowledge",
@@ -89,6 +106,43 @@ def test_agent_confirm_rejects_unapproved_execution_sheet(sample_raster: Path) -
         },
     )
     assert response.status_code == 422
+
+
+def test_agent_confirm_stream_submits_and_reports_job(sample_raster: Path) -> None:
+    plan_response = client.post(
+        "/api/agent/plan",
+        json={
+            "message": "我想分析农田长势",
+            "availableBands": ["blue", "green", "red", "nir"],
+            "enableWebSearch": False,
+        },
+    )
+    plan_id = plan_response.json()["id"]
+    with client.stream(
+        "POST",
+        f"/api/agent/plans/{plan_id}/confirm/stream",
+        json={
+            "source": {"localPath": str(sample_raster)},
+            "bands": {
+                "blue": 1,
+                "green": 2,
+                "red": 3,
+                "red_edge": 0,
+                "nir": 4,
+                "swir1": 0,
+                "swir2": 0,
+            },
+            "indices": ["ndvi"],
+            "engine": "numpy",
+            "blockSize": 128,
+            "priority": 3,
+        },
+    ) as response:
+        body = response.read().decode("utf-8")
+    assert response.status_code == 200
+    assert "event: plan" in body
+    assert "event: job" in body
+    assert "successful" in body
 
 
 def test_agent_interprets_statistics_for_showcase() -> None:
@@ -154,6 +208,22 @@ def test_sync_process_executes_real_windowed_raster(sample_raster: Path) -> None
     assert payload["outputs"]["actualEngine"] == "numpy"
     assert payload["outputs"]["products"][0]["index"] == "ndvi"
     assert Path(payload["outputs"]["products"][0]["path"]).is_file()
+
+
+def test_execution_allows_unused_zero_band_mappings(sample_raster: Path) -> None:
+    payload = execution_payload(sample_raster)
+    payload["bands"] = {
+        "blue": 1,
+        "green": 2,
+        "red": 3,
+        "red_edge": 0,
+        "nir": 4,
+        "swir1": 0,
+        "swir2": 0,
+    }
+    response = client.post("/processes/ndvi/execution", json=payload)
+    assert response.status_code == 200
+    assert response.json()["outputs"]["products"][0]["index"] == "ndvi"
 
 
 def test_batch_process_shares_one_request_for_multiple_indices(sample_raster: Path) -> None:

@@ -4,6 +4,7 @@ import type {
   AgentKnowledgeDocument,
   AgentLLMConfig,
   AgentResultInterpretation,
+  AgentStreamEvent,
   IndexMetadata,
   JobRecord,
   Product,
@@ -37,6 +38,52 @@ async function uploadForm<T>(url: string, formData: FormData): Promise<T> {
     throw new Error(payload.detail ?? '上传失败')
   }
   return response.json() as Promise<T>
+}
+
+async function requestStream(
+  url: string,
+  body: unknown,
+  onEvent: (event: AgentStreamEvent) => void | Promise<void>,
+): Promise<void> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok || !response.body) {
+    const payload = await response.json().catch(() => ({ detail: response.statusText }))
+    throw new Error(payload.detail ?? '流式请求失败')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const frames = buffer.split('\n\n')
+    buffer = frames.pop() ?? ''
+    for (const frame of frames) {
+      const parsed = parseSseFrame(frame)
+      if (parsed) await onEvent(parsed)
+    }
+  }
+  const tail = parseSseFrame(buffer)
+  if (tail) await onEvent(tail)
+}
+
+function parseSseFrame(frame: string): AgentStreamEvent | null {
+  const event = frame.match(/^event:\s*(.+)$/m)?.[1]?.trim()
+  const data = frame.match(/^data:\s*(.+)$/m)?.[1]
+  if (!event || !data) return null
+  return {
+    event,
+    data: JSON.parse(data) as AgentStreamEvent['data'],
+  }
 }
 
 export function usePlatformApi() {
@@ -105,6 +152,40 @@ export function usePlatformApi() {
     })
   }
 
+  async function createPlanStream(
+    message: string,
+    availableBands: string[],
+    options: {
+      llm?: AgentLLMConfig | null
+      enableWebSearch?: boolean
+      customIndex?: {
+        id: string
+        name: string
+        expression: string
+        description: string
+      } | null
+      sessionId?: string | null
+      rasterWidth?: number | null
+      rasterHeight?: number | null
+    },
+    onEvent: (event: AgentStreamEvent) => void | Promise<void>,
+  ): Promise<void> {
+    return requestStream(
+      '/api/agent/plan/stream',
+      {
+        message,
+        sessionId: options.sessionId,
+        availableBands,
+        rasterWidth: options.rasterWidth,
+        rasterHeight: options.rasterHeight,
+        llm: options.llm,
+        enableWebSearch: options.enableWebSearch ?? true,
+        customIndex: options.customIndex,
+      },
+      onEvent,
+    )
+  }
+
   async function confirmPlan(
     planId: string,
     localPath: string,
@@ -122,6 +203,27 @@ export function usePlatformApi() {
         priority: executionSheet.priority,
       }),
     })
+  }
+
+  async function confirmPlanStream(
+    planId: string,
+    localPath: string,
+    bands: Record<string, number>,
+    executionSheet: AgentExecutionSheet,
+    onEvent: (event: AgentStreamEvent) => void | Promise<void>,
+  ): Promise<void> {
+    return requestStream(
+      `/api/agent/plans/${planId}/confirm/stream`,
+      {
+        source: { localPath },
+        bands,
+        indices: executionSheet.indices,
+        engine: executionSheet.engine,
+        blockSize: executionSheet.blockSize,
+        priority: executionSheet.priority,
+      },
+      onEvent,
+    )
   }
 
   async function importAgentKnowledge(
@@ -186,7 +288,9 @@ export function usePlatformApi() {
     executeAssetBatch,
     listIndices,
     createPlan,
+    createPlanStream,
     confirmPlan,
+    confirmPlanStream,
     importAgentKnowledge,
     listJobs,
     getJob,

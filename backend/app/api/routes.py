@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
     AgentCustomIndexRequest,
@@ -210,6 +213,42 @@ async def create_agent_plan(request: AgentPlanRequest) -> dict[str, Any]:
     )
 
 
+@router.post("/api/agent/plan/stream")
+async def stream_agent_plan(request: AgentPlanRequest) -> StreamingResponse:
+    async def events():
+        yield _sse("status", {"message": "已收到问题，正在建立分析上下文。"})
+        try:
+            yield _sse("status", {"message": "正在检索本地指数知识和外部知识库。"})
+            if request.enable_web_search:
+                yield _sse("status", {"message": "正在联合网络检索适用场景。"})
+            plan = await vegetation_agent.create_plan(
+                request.message,
+                request.available_bands,
+                request.raster_width,
+                request.raster_height,
+                request.llm,
+                request.enable_web_search,
+                [document.model_dump() for document in request.external_documents],
+                request.custom_index.model_dump(by_alias=True) if request.custom_index else None,
+                request.session_id,
+            )
+            yield _sse(
+                "status",
+                {
+                    "message": (
+                        f"方案已生成：{plan['title']}，"
+                        f"可执行指数 {len(plan['selectedIndices'])} 个。"
+                    )
+                },
+            )
+            yield _sse("plan", plan)
+            yield _sse("done", {"message": "方案生成完成，等待人工确认。"})
+        except Exception as error:  # noqa: BLE001 - 流式边界需要把失败写回客户端
+            yield _sse("error", {"message": str(error)})
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
 @router.post("/api/agent/chat")
 async def chat_with_agent(request: AgentPlanRequest) -> dict[str, Any]:
     plan = await create_agent_plan(request)
@@ -256,6 +295,69 @@ def confirm_agent_plan(plan_id: str, request: ConfirmPlanRequest) -> dict[str, A
         )
     except (KeyError, ValueError, FileNotFoundError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@router.post("/api/agent/plans/{plan_id}/confirm/stream")
+async def stream_confirm_agent_plan(plan_id: str, request: ConfirmPlanRequest) -> StreamingResponse:
+    async def events():
+        try:
+            yield _sse("status", {"message": "正在校验执行单、影像路径和波段映射。"})
+            plan = vegetation_agent.get_plan(plan_id)
+            allowed_indices = {
+                item["id"]
+                for item in plan["recommendations"]
+                if item["executable"]
+            }
+            selected_indices = request.indices or plan["selectedIndices"]
+            invalid_indices = sorted(set(selected_indices) - allowed_indices)
+            if invalid_indices:
+                raise ValueError(f"执行单包含不可执行指数: {', '.join(invalid_indices)}")
+            execution_request = ExecutionRequest(
+                source=request.source,
+                indices=selected_indices,
+                bands=request.bands,
+                engine=request.engine or plan["engine"],
+                block_size=request.block_size,
+                priority=request.priority,
+            )
+            task = _to_raster_task(execution_request, selected_indices)
+            _validate_raster_task(task)
+            yield _sse("status", {"message": "校验通过，正在提交异步计算任务。"})
+            record = job_manager.submit(task, request.priority)
+            confirmed = vegetation_agent.mark_confirmed(
+                plan_id,
+                record.id,
+                {
+                    "indices": selected_indices,
+                    "engine": execution_request.engine,
+                    "blockSize": execution_request.block_size,
+                    "priority": request.priority,
+                },
+            )
+            yield _sse("plan", confirmed)
+            yield _sse("status", {"message": f"任务 {record.id} 已进入队列。"})
+
+            while True:
+                job = job_manager.get(record.id).public()
+                yield _sse("job", job)
+                if job["status"] in {"successful", "failed", "dismissed"}:
+                    if job["status"] == "successful":
+                        yield _sse("result", job.get("result") or {})
+                        yield _sse("done", {"message": "任务完成，结果已生成。"})
+                    else:
+                        yield _sse(
+                            "error",
+                            {
+                                "message": job.get("error") or job.get("message") or "任务执行失败",
+                                "job": job,
+                            },
+                        )
+                    break
+                await asyncio.sleep(0.8)
+        except Exception as error:  # noqa: BLE001 - 流式边界需要把失败写回客户端
+            yield _sse("error", {"message": str(error)})
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @router.post("/api/agent/interpret-results")
@@ -498,3 +600,26 @@ def _to_raster_task(request: ExecutionRequest, indices: list[str]) -> RasterTask
         preview=request.preview,
         statistics=request.statistics,
     )
+
+
+def _validate_raster_task(task: RasterTask) -> None:
+    import rasterio
+
+    definitions = [get_index(index_id) for index_id in task.indices]
+    required_bands = sorted({band for item in definitions for band in item.required_bands})
+    missing_mapping = sorted(set(required_bands) - task.bands.keys())
+    if missing_mapping:
+        raise ValueError(f"缺少逻辑波段映射: {', '.join(missing_mapping)}")
+    with rasterio.open(task.source_path) as source:
+        invalid_numbers = [
+            task.bands[logical_name]
+            for logical_name in required_bands
+            if task.bands[logical_name] < 1 or task.bands[logical_name] > source.count
+        ]
+    if invalid_numbers:
+        raise ValueError(f"波段号超出影像范围: {invalid_numbers}")
+
+
+def _sse(event: str, data: dict[str, Any]) -> str:
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"event: {event}\ndata: {payload}\n\n"

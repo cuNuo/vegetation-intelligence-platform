@@ -124,7 +124,9 @@ class RasterPipeline:
 
         with rasterio.open(source_path) as source:
             invalid_numbers = [
-                number for number in task.bands.values() if number < 1 or number > source.count
+                task.bands[logical_name]
+                for logical_name in required_bands
+                if task.bands[logical_name] < 1 or task.bands[logical_name] > source.count
             ]
             if invalid_numbers:
                 raise ValueError(f"波段号超出影像范围: {invalid_numbers}")

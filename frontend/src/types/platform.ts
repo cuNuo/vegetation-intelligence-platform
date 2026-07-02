@@ -140,6 +140,16 @@ export interface AgentResultInterpretation {
   conversation?: AgentConversationEvent[]
 }
 
+export interface AgentStreamEvent {
+  event: 'status' | 'plan' | 'job' | 'result' | 'done' | 'error' | string
+  data: {
+    message?: string
+    plan?: AgentPlan
+    job?: JobRecord
+    [key: string]: unknown
+  }
+}
+
 export interface JobRecord {
   id: string
   status: string
