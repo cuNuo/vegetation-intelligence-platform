@@ -1,3 +1,9 @@
+# backend/tests/test_advanced_analysis.py
+# 文件说明：自定义公式、变化检测和区域统计测试。
+# 主要职责：构造可重复数据并验证业务边界和回归行为。
+# 对外入口：pytest fixture 与 test_* 用例。
+# 依赖边界：隔离数据库、MinIO 和外部 LLM。
+
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +19,7 @@ from app.services.advanced_analysis import (
 
 
 def test_custom_formula_uses_whitelisted_bands_and_operators() -> None:
+    """验证 custom formula uses whitelisted bands and operators 场景的行为和回归边界。"""
     validation = validate_custom_expression("(nir-red)/(nir+red)", ["nir", "red"])
     assert validation["requiredBands"] == ["nir", "red"]
     result = evaluate_custom_expression(
@@ -26,11 +33,13 @@ def test_custom_formula_uses_whitelisted_bands_and_operators() -> None:
 
 
 def test_custom_formula_rejects_attribute_access() -> None:
+    """验证 custom formula rejects attribute access 场景的行为和回归边界。"""
     with pytest.raises(ValueError):
         validate_custom_expression("nir.__class__", ["nir"])
 
 
 def test_change_detection_and_zonal_statistics(sample_raster: Path, tmp_path: Path) -> None:
+    """验证 change detection and zonal statistics 场景的行为和回归边界。"""
     before = tmp_path / "before.tif"
     after = tmp_path / "after.tif"
     output = tmp_path / "change.tif"

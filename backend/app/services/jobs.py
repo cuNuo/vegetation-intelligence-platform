@@ -1,5 +1,9 @@
 # backend/app/services/jobs.py
-# 文件说明：本地与 Celery 异步栅格任务记录、进度估算和结果管理。
+# 文件说明：本地线程池与 Celery 异步任务管理。
+# 主要职责：维护状态、进度、耗时、取消、结果和失败信息。
+# 对外入口：JobRecord、JobManager、job_manager。
+# 依赖边界：统一调用 RasterPipeline。
+
 """本地任务管理器。
 
 开发模式使用线程池，部署模式可由Celery任务包装同一RasterPipeline。
@@ -21,6 +25,7 @@ from app.settings import settings
 
 @dataclass(slots=True)
 class JobRecord:
+    """保存任务从排队到终态的状态、时间和结果。"""
     id: str
     status: str = "accepted"
     progress: float = 0.0
@@ -40,13 +45,16 @@ class JobRecord:
     cancelled: bool = False
 
     def public(self) -> dict[str, Any]:
+        """执行 public 对应的领域操作并返回结构化结果。"""
         payload = asdict(self)
         payload.pop("cancelled", None)
         return payload
 
 
 class JobManager:
+    """统一封装本地线程池与 Celery 异步执行。"""
     def __init__(self, max_workers: int = 3) -> None:
+        """初始化实例依赖、运行状态和可配置参数。"""
         self._jobs: dict[str, JobRecord] = {}
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(
@@ -54,6 +62,7 @@ class JobManager:
         )
 
     def submit(self, task: RasterTask, priority: int = 3) -> JobRecord:
+        """执行 submit 对应的领域操作并返回结构化结果。"""
         if not settings.celery_always_eager:
             return self._submit_celery(task, priority)
         record = JobRecord(id=uuid.uuid4().hex, engine=task.engine, index_count=len(task.indices))
@@ -63,10 +72,12 @@ class JobManager:
         return record
 
     def execute_sync(self, task: RasterTask) -> dict[str, Any]:
+        """执行 execute_sync 对应的领域操作并返回结构化结果。"""
         task.synchronous = True
         return RasterPipeline().run(task)
 
     def get(self, job_id: str) -> JobRecord:
+        """执行 get 对应的领域操作并返回结构化结果。"""
         with self._lock:
             try:
                 record = self._jobs[job_id]
@@ -77,10 +88,12 @@ class JobManager:
         return record
 
     def list(self) -> list[dict[str, Any]]:
+        """执行 list 对应的领域操作并返回结构化结果。"""
         with self._lock:
             return [record.public() for record in reversed(list(self._jobs.values()))]
 
     def cancel(self, job_id: str) -> JobRecord:
+        """执行 cancel 对应的领域操作并返回结构化结果。"""
         record = self.get(job_id)
         if not settings.celery_always_eager:
             from app.celery_app import celery_app
@@ -92,6 +105,7 @@ class JobManager:
         return record
 
     def _run(self, job_id: str, task: RasterTask) -> None:
+        """完成模块内部的 run 辅助处理。"""
         record = self.get(job_id)
         record.status = "running"
         record.started_at = datetime.now(UTC).isoformat()
@@ -99,6 +113,7 @@ class JobManager:
         started_tick = perf_counter()
 
         def progress(current: int, total: int, message: str) -> None:
+            """执行 progress 对应的领域操作并返回结构化结果。"""
             elapsed = max(perf_counter() - started_tick, 1e-6)
             throughput = current / elapsed if current > 0 else None
             record.progress = round(current / max(total, 1) * 100, 2)
@@ -136,6 +151,7 @@ class JobManager:
             record.updated_at = record.finished_at
 
     def _submit_celery(self, task: RasterTask, priority: int) -> JobRecord:
+        """完成模块内部的 submit_celery 辅助处理。"""
         from app.celery_app import celery_app
         from app.services.raster_pipeline import task_as_dict
 
@@ -153,6 +169,7 @@ class JobManager:
 
     @staticmethod
     def _refresh_celery(record: JobRecord) -> None:
+        """完成模块内部的 refresh_celery 辅助处理。"""
         from app.celery_app import celery_app
 
         result = celery_app.AsyncResult(record.id)

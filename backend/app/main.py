@@ -1,3 +1,9 @@
+# backend/app/main.py
+# 文件说明：FastAPI 应用装配入口。
+# 主要职责：注册生命周期、CORS、静态目录、路由、监控和健康检查。
+# 对外入口：app、lifespan、health。
+# 依赖边界：业务逻辑下沉到 services。
+
 """FastAPI应用入口。"""
 
 from contextlib import asynccontextmanager
@@ -16,6 +22,7 @@ from app.settings import settings
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    """管理应用启动加载与 Nacos 注册生命周期。"""
     (settings.data_dir / "inputs").mkdir(parents=True, exist_ok=True)
     (settings.data_dir / "outputs").mkdir(parents=True, exist_ok=True)
     load_persisted_custom_indices()
@@ -51,4 +58,5 @@ app.mount(
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """返回不依赖外部服务的进程健康状态。"""
     return {"status": "healthy", "service": settings.app_name}

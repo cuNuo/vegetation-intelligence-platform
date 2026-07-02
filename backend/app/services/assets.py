@@ -1,5 +1,9 @@
 # backend/app/services/assets.py
-# 文件说明：上传影像保存、GeoTIFF 金字塔构建、元数据检查与预览生成。
+# 文件说明：GeoTIFF 资产、overview、预览与 MinIO 适配。
+# 主要职责：解析元数据、补传感器波段、构建金字塔和管理对象。
+# 对外入口：inspect_raster、save_uploaded_asset、resolve_source。
+# 依赖边界：配置只补缺失元数据，路径必须安全解析。
+
 """本地资产检查与可选MinIO访问。"""
 
 from __future__ import annotations
@@ -118,6 +122,7 @@ def ensure_raster_overviews(path: Path) -> dict[str, Any]:
 
 
 def _geographic_bounds(dataset: Any) -> list[float] | None:
+    """完成模块内部的 geographic_bounds 辅助处理。"""
     if not dataset.crs:
         return None
     from rasterio.warp import transform_bounds
@@ -126,6 +131,7 @@ def _geographic_bounds(dataset: Any) -> list[float] | None:
 
 
 def inspect_raster(path: str, filename_hint: str | None = None) -> dict[str, Any]:
+    """读取尺寸、空间参考、波段、波长、范围和 overview。"""
     import rasterio
 
     resolved = Path(path).resolve()
@@ -175,6 +181,7 @@ def inspect_raster(path: str, filename_hint: str | None = None) -> dict[str, Any
 
 
 def _extract_wavelength_nm(description: str | None, tags: dict[str, Any]) -> float | None:
+    """完成模块内部的 extract_wavelength_nm 辅助处理。"""
     text = " ".join(
         str(value)
         for value in [
@@ -196,6 +203,7 @@ def _extract_wavelength_nm(description: str | None, tags: dict[str, Any]) -> flo
 
 
 def write_asset_preview(source_path: Path, target_path: Path) -> None:
+    """执行 write_asset_preview 对应的领域操作并返回结构化结果。"""
     import numpy as np
     import rasterio
     from PIL import Image
@@ -228,6 +236,7 @@ def write_asset_preview(source_path: Path, target_path: Path) -> None:
 
 
 def resolve_source(object_key: str | None, local_path: str | None) -> Path:
+    """把对象键或本地路径解析为受约束的真实文件。"""
     if local_path:
         path = Path(local_path).resolve()
         if not path.is_file():
@@ -253,6 +262,7 @@ def resolve_source(object_key: str | None, local_path: str | None) -> Path:
 
 
 def create_upload_url(object_key: str) -> dict[str, str]:
+    """执行 create_upload_url 对应的领域操作并返回结构化结果。"""
     from minio import Minio
 
     client = Minio(

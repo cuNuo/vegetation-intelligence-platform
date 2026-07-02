@@ -1,3 +1,9 @@
+# backend/tests/conftest.py
+# 文件说明：测试夹具与外部服务隔离。
+# 主要职责：构造可重复数据并验证业务边界和回归行为。
+# 对外入口：pytest fixture 与 test_* 用例。
+# 依赖边界：隔离数据库、MinIO 和外部 LLM。
+
 from pathlib import Path
 
 import numpy as np

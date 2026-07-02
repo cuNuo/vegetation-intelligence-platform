@@ -1,3 +1,9 @@
+// frontend/src/composables/usePlatformApi.ts
+// 文件说明：平台 HTTP 与 SSE 客户端。
+// 主要职责：统一请求、错误解析、上传进度、流式事件和业务接口封装。
+// 对外入口：usePlatformApi。
+// 依赖边界：组件不得重复实现同类 fetch/SSE 解析。
+
 import type {
   AgentPlan,
   AgentExecutionSheet,
@@ -13,6 +19,7 @@ import type {
   UploadedAsset,
 } from '@/types/platform'
 
+/** 发送 JSON 请求，统一检查 HTTP 状态并解析结构化错误。 */
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -28,6 +35,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+/** 使用 XMLHttpRequest 上传文件，以便实时上报字节级进度。 */
 async function uploadForm<T>(
   url: string,
   formData: FormData,
@@ -54,6 +62,7 @@ async function uploadForm<T>(
   })
 }
 
+/** 解析上传响应，并在非 JSON 返回时生成可读错误。 */
 function parseUploadResponse<T>(responseText: string): T & { detail?: string } {
   try {
     return JSON.parse(responseText || '{}') as T & { detail?: string }
@@ -62,6 +71,7 @@ function parseUploadResponse<T>(responseText: string): T & { detail?: string } {
   }
 }
 
+/** 消费 fetch ReadableStream，按 SSE 帧持续分发事件。 */
 async function requestStream(
   url: string,
   body: unknown,
@@ -98,6 +108,7 @@ async function requestStream(
   if (tail) await onEvent(tail)
 }
 
+/** 解析单个 SSE 帧的 event/data 字段并忽略不完整数据。 */
 function parseSseFrame(frame: string): AgentStreamEvent | null {
   const event = frame.match(/^event:\s*(.+)$/m)?.[1]?.trim()
   const data = frame.match(/^data:\s*(.+)$/m)?.[1]
@@ -108,8 +119,10 @@ function parseSseFrame(frame: string): AgentStreamEvent | null {
   }
 }
 
+/** 返回平台所有 REST、上传和 SSE 调用方法。 */
 export function usePlatformApi() {
 
+  /** 处理 uploadAsset 对应的组件交互或数据转换逻辑。 */
   async function uploadAsset(
     file: File,
     onProgress?: (progress: number) => void,
@@ -119,6 +132,7 @@ export function usePlatformApi() {
     return uploadForm<UploadedAsset>('/api/assets/upload', formData, onProgress)
   }
 
+  /** 处理 executeAssetBatch 对应的组件交互或数据转换逻辑。 */
   async function executeAssetBatch(
     localPath: string,
     indices: string[],
@@ -144,11 +158,13 @@ export function usePlatformApi() {
     )
   }
 
+  /** 处理 listIndices 对应的组件交互或数据转换逻辑。 */
   async function listIndices(): Promise<IndexMetadata[]> {
     const response = await requestJson<{ items: IndexMetadata[] }>('/api/indices')
     return response.items
   }
 
+  /** 处理 createPlan 对应的组件交互或数据转换逻辑。 */
   async function createPlan(
     message: string,
     availableBands: string[],
@@ -177,6 +193,7 @@ export function usePlatformApi() {
     })
   }
 
+  /** 处理 createPlanStream 对应的组件交互或数据转换逻辑。 */
   async function createPlanStream(
     message: string,
     availableBands: string[],
@@ -211,6 +228,7 @@ export function usePlatformApi() {
     )
   }
 
+  /** 提交人工确认后的执行单并流式跟踪任务。 */
   async function confirmPlan(
     planId: string,
     localPath: string,
@@ -230,6 +248,7 @@ export function usePlatformApi() {
     })
   }
 
+  /** 处理 confirmPlanStream 对应的组件交互或数据转换逻辑。 */
   async function confirmPlanStream(
     planId: string,
     localPath: string,
@@ -251,6 +270,7 @@ export function usePlatformApi() {
     )
   }
 
+  /** 处理 importAgentKnowledge 对应的组件交互或数据转换逻辑。 */
   async function importAgentKnowledge(
     title: string,
     content: string,
@@ -268,25 +288,30 @@ export function usePlatformApi() {
     })
   }
 
+  /** 处理 listJobs 对应的组件交互或数据转换逻辑。 */
   async function listJobs(): Promise<JobRecord[]> {
     const response = await requestJson<{ jobs: JobRecord[] }>('/jobs')
     return response.jobs
   }
 
+  /** 处理 getJob 对应的组件交互或数据转换逻辑。 */
   async function getJob(jobId: string): Promise<JobRecord> {
     return requestJson<JobRecord>(`/jobs/${jobId}`)
   }
 
+  /** 请求取消任务并立即刷新任务列表。 */
   async function cancelJob(jobId: string): Promise<JobRecord> {
     return requestJson<JobRecord>(`/jobs/${jobId}`, {
       method: 'DELETE',
     })
   }
 
+  /** 处理 getResults 对应的组件交互或数据转换逻辑。 */
   async function getResults(jobId: string): Promise<RasterResult> {
     return requestJson<RasterResult>(`/jobs/${jobId}/results`)
   }
 
+  /** 请求 Agent 根据当前产品统计生成解释。 */
   async function interpretResults(
     products: Product[],
     userGoal: string,
@@ -304,6 +329,7 @@ export function usePlatformApi() {
     })
   }
 
+  /** 处理 getCapabilities 对应的组件交互或数据转换逻辑。 */
   async function getCapabilities(): Promise<SystemCapabilities> {
     return requestJson<SystemCapabilities>('/api/system/capabilities')
   }

@@ -1,5 +1,9 @@
 # backend/tests/test_api.py
-# 文件说明：验证 OGC Process、上传、瓦片、Agent 与异步任务 API 契约。
+# 文件说明：FastAPI、OGC、上传、瓦片和 Agent 接口测试。
+# 主要职责：构造可重复数据并验证业务边界和回归行为。
+# 对外入口：pytest fixture 与 test_* 用例。
+# 依赖边界：隔离数据库、MinIO 和外部 LLM。
+
 import time
 from pathlib import Path
 
@@ -11,6 +15,7 @@ client = TestClient(app)
 
 
 def test_health_and_index_catalog() -> None:
+    """验证 health and index catalog 场景的行为和回归边界。"""
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["status"] == "healthy"
@@ -21,12 +26,14 @@ def test_health_and_index_catalog() -> None:
 
 
 def test_ogc_process_catalog_contains_core_and_legacy_processes() -> None:
+    """验证 ogc process catalog contains core and legacy processes 场景的行为和回归边界。"""
     response = client.get("/processes")
     assert response.status_code == 200
     assert len(response.json()["processes"]) == 35
 
 
 def test_agent_plan_endpoint_is_safe_by_default() -> None:
+    """验证 agent plan endpoint is safe by default 场景的行为和回归边界。"""
     response = client.post(
         "/api/agent/plan",
         json={
@@ -45,6 +52,7 @@ def test_agent_plan_endpoint_is_safe_by_default() -> None:
 
 
 def test_agent_plan_stream_returns_sse_events() -> None:
+    """验证 agent plan stream returns sse events 场景的行为和回归边界。"""
     with client.stream(
         "POST",
         "/api/agent/plan/stream",
@@ -62,6 +70,7 @@ def test_agent_plan_stream_returns_sse_events() -> None:
 
 
 def test_agent_knowledge_import_enters_rag() -> None:
+    """验证 agent knowledge import enters rag 场景的行为和回归边界。"""
     imported = client.post(
         "/api/agent/knowledge",
         json={
@@ -87,6 +96,7 @@ def test_agent_knowledge_import_enters_rag() -> None:
 
 
 def test_agent_confirm_rejects_unapproved_execution_sheet(sample_raster: Path) -> None:
+    """验证 agent confirm rejects unapproved execution sheet 场景的行为和回归边界。"""
     plan_response = client.post(
         "/api/agent/plan",
         json={
@@ -111,6 +121,7 @@ def test_agent_confirm_rejects_unapproved_execution_sheet(sample_raster: Path) -
 
 
 def test_agent_confirm_stream_submits_and_reports_job(sample_raster: Path) -> None:
+    """验证 agent confirm stream submits and reports job 场景的行为和回归边界。"""
     plan_response = client.post(
         "/api/agent/plan",
         json={
@@ -148,6 +159,7 @@ def test_agent_confirm_stream_submits_and_reports_job(sample_raster: Path) -> No
 
 
 def test_agent_interprets_statistics_for_showcase() -> None:
+    """验证 agent interprets statistics for showcase 场景的行为和回归边界。"""
     response = client.post(
         "/api/agent/interpret-results",
         json={
@@ -170,6 +182,7 @@ def test_agent_interprets_statistics_for_showcase() -> None:
 
 
 def execution_payload(source_path: Path, indices: list[str] | None = None) -> dict:
+    """执行 execution_payload 对应的领域操作并返回结构化结果。"""
     return {
         "source": {"localPath": str(source_path)},
         "indices": indices or ["ndvi"],
@@ -183,6 +196,7 @@ def execution_payload(source_path: Path, indices: list[str] | None = None) -> di
 
 
 def test_upload_asset_saves_geotiff_and_returns_metadata(sample_raster: Path) -> None:
+    """验证 upload asset saves geotiff and returns metadata 场景的行为和回归边界。"""
     with sample_raster.open("rb") as file_obj:
         response = client.post(
             "/api/assets/upload",
@@ -205,6 +219,7 @@ def test_upload_asset_saves_geotiff_and_returns_metadata(sample_raster: Path) ->
 
 
 def test_geotiff_tile_endpoint_renders_uploaded_tif(sample_raster: Path) -> None:
+    """验证 geotiff tile endpoint renders uploaded tif 场景的行为和回归边界。"""
     with sample_raster.open("rb") as file_obj:
         upload = client.post(
             "/api/assets/upload",
@@ -218,6 +233,7 @@ def test_geotiff_tile_endpoint_renders_uploaded_tif(sample_raster: Path) -> None
 
 
 def test_sync_process_executes_real_windowed_raster(sample_raster: Path) -> None:
+    """验证 sync process executes real windowed raster 场景的行为和回归边界。"""
     response = client.post(
         "/processes/ndvi/execution",
         json=execution_payload(sample_raster),
@@ -231,6 +247,7 @@ def test_sync_process_executes_real_windowed_raster(sample_raster: Path) -> None
 
 
 def test_execution_allows_unused_zero_band_mappings(sample_raster: Path) -> None:
+    """验证 execution allows unused zero band mappings 场景的行为和回归边界。"""
     payload = execution_payload(sample_raster)
     payload["bands"] = {
         "blue": 1,
@@ -247,6 +264,7 @@ def test_execution_allows_unused_zero_band_mappings(sample_raster: Path) -> None
 
 
 def test_batch_process_shares_one_request_for_multiple_indices(sample_raster: Path) -> None:
+    """验证 batch process shares one request for multiple indices 场景的行为和回归边界。"""
     response = client.post(
         "/processes/batch/execution",
         json=execution_payload(sample_raster, ["ndvi", "evi", "gndvi"]),
@@ -257,6 +275,7 @@ def test_batch_process_shares_one_request_for_multiple_indices(sample_raster: Pa
 
 
 def test_async_process_returns_job_and_results(sample_raster: Path) -> None:
+    """验证 async process returns job and results 场景的行为和回归边界。"""
     response = client.post(
         "/processes/ndvi/execution",
         headers={"Prefer": "respond-async"},
@@ -286,6 +305,7 @@ def test_async_process_returns_job_and_results(sample_raster: Path) -> None:
 
 
 def test_execution_rejects_missing_file_and_invalid_band(sample_raster: Path) -> None:
+    """验证 execution rejects missing file and invalid band 场景的行为和回归边界。"""
     missing = client.post(
         "/processes/ndvi/execution",
         json=execution_payload(sample_raster.parent / "missing.tif"),
@@ -300,6 +320,7 @@ def test_execution_rejects_missing_file_and_invalid_band(sample_raster: Path) ->
 
 
 def test_capabilities_match_task_book_requirements() -> None:
+    """验证 capabilities match task book requirements 场景的行为和回归边界。"""
     response = client.get("/api/system/capabilities")
     assert response.status_code == 200
     payload = response.json()
@@ -312,6 +333,7 @@ def test_capabilities_match_task_book_requirements() -> None:
 
 
 def test_taskbook_coverage_has_no_missing_items() -> None:
+    """验证 taskbook coverage has no missing items 场景的行为和回归边界。"""
     response = client.get("/api/system/taskbook-coverage")
     assert response.status_code == 200
     payload = response.json()

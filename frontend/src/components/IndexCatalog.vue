@@ -1,3 +1,9 @@
+<!-- frontend/src/components/IndexCatalog.vue -->
+<!-- 文件说明：植被指数目录与公式浏览器。 -->
+<!-- 主要职责：分类检索指数、解析公式并展示波段和限制。 -->
+<!-- 对外约定：indices prop。 -->
+<!-- 依赖边界：只展示元数据，不在前端重复计算指数。 -->
+
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import type { IndexMetadata } from '@/types/platform'
@@ -38,15 +44,18 @@ const visibleIndices = computed(() => {
   })
 })
 
+/** 把内部分类代码转换为中文标签。 */
 function categoryLabel(category: string) {
   return category === 'all' ? '全部指数' : category
 }
 
+/** 格式化指数建议范围。 */
 function rangeLabel(range: [number, number] | null) {
   if (!range) return '未限定'
   return `${range[0]} 至 ${range[1]}`
 }
 
+/** 把公式拆成波段、数字、参数、函数和运算符 token。 */
 function tokenizeFormula(formula: string): FormulaToken[] {
   return Array.from(
     formula.matchAll(/RedEdge|SWIR[12]|NIR|Red|Green|Blue|NDVI|sqrt|max|sign|abs|[A-Z][A-Za-z0-9]*|\d+(?:\.\d+)?|[()+\-*/^,]/g),
@@ -60,6 +69,7 @@ function tokenizeFormula(formula: string): FormulaToken[] {
   })
 }
 
+/** 判断首尾括号是否包裹完整表达式。 */
 function matchingOuterParens(expression: string) {
   if (!expression.startsWith('(') || !expression.endsWith(')')) return false
   let depth = 0
@@ -72,6 +82,7 @@ function matchingOuterParens(expression: string) {
   return depth === 0
 }
 
+/** 逐层移除只起分组作用的最外层括号。 */
 function stripOuterParens(expression: string): string {
   let current = expression.trim()
   while (matchingOuterParens(current)) {
@@ -80,6 +91,7 @@ function stripOuterParens(expression: string): string {
   return current
 }
 
+/** 仅在括号深度为零时拆分主除法，供分式排版。 */
 function splitTopLevelDivision(formula: string): [string, string] | null {
   let depth = 0
   for (let index = 0; index < formula.length; index += 1) {
@@ -93,6 +105,7 @@ function splitTopLevelDivision(formula: string): [string, string] | null {
   return null
 }
 
+/** 把可识别公式转换为分子、分母 token 结构。 */
 function fractionFormula(formula: string): FormulaFraction | null {
   // 只拆最外层除号，避免把 sqrt(...) 或括号内部表达式误渲染成错误分式。
   const parts = splitTopLevelDivision(formula)
@@ -103,6 +116,7 @@ function fractionFormula(formula: string): FormulaFraction | null {
   }
 }
 
+/** 返回公式 token 的用户可读标签。 */
 function tokenLabel(token: FormulaToken) {
   return token.value === '*' ? '×' : token.value
 }

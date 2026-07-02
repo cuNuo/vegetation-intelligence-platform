@@ -1,3 +1,9 @@
+# backend/app/settings.py
+# 文件说明：应用配置模型。
+# 主要职责：集中读取 Redis、数据库、MinIO、Nacos、LLM 与实例参数。
+# 对外入口：Settings、settings。
+# 依赖边界：只定义配置，不在导入阶段连接外部服务。
+
 """应用配置。"""
 
 from pathlib import Path
@@ -6,6 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """封装 Settings 相关状态、约束和可复用行为。"""
     app_name: str = "植被指数智能分析平台"
     data_dir: Path = Path("data")
     redis_url: str = "redis://localhost:6379/0"

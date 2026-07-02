@@ -1,5 +1,9 @@
 <!-- frontend/src/components/AgentDrawer.vue -->
-<!-- 文件说明：智能体对话、方案确认、知识导入和结果解读侧栏。 -->
+<!-- 文件说明：智能体对话与执行单侧栏。 -->
+<!-- 主要职责：处理对话、SSE 思考、RAG 来源、知识导入、确认执行和结果解读。 -->
+<!-- 对外约定：workspace store 与 Platform API。 -->
+<!-- 依赖边界：未经用户确认不得调用确认提交接口。 -->
+
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import { usePlatformApi } from '@/composables/usePlatformApi'
@@ -138,11 +142,13 @@ const statusLine = computed(() => {
   return '待命'
 })
 
+/** 只在地址和令牌完整时返回本次请求的 LLM 配置。 */
 function currentLlmConfig(): AgentLLMConfig | null {
   if (!canUseLlm.value) return null
   return { ...llmConfig }
 }
 
+/** 把会话事件类型转换为时间线标题。 */
 function eventTitle(event: AgentConversationEvent): string {
   const labels: Record<string, string> = {
     question: '用户问题',
@@ -153,11 +159,13 @@ function eventTitle(event: AgentConversationEvent): string {
   return labels[event.eventType] ?? event.eventType
 }
 
+/** 使用后端会话事件重建本地对话时间线。 */
 function syncConversation(events?: AgentConversationEvent[]) {
   if (!events?.length || !store.activePlan) return
   store.activePlan.conversation = events
 }
 
+/** 追加本地用户或助手消息，保证等待请求时界面即时反馈。 */
 function appendLocalMessage(role: AgentConversationEvent['role'], content: string, eventType = 'question') {
   const id = `${Date.now()}-${localConversation.value.length}`
   localConversation.value = [
@@ -175,16 +183,19 @@ function appendLocalMessage(role: AgentConversationEvent['role'], content: strin
   return id
 }
 
+/** 等待 DOM 更新后滚动到最新消息。 */
 async function scrollConversationToLatest() {
   await nextTick()
   const element = timelineRef.value
   if (element) element.scrollTop = element.scrollHeight
 }
 
+/** 处理 appendStatus 对应的组件交互或数据转换逻辑。 */
 function appendStatus(content: string, eventType = 'execution') {
   appendLocalMessage('system', content, eventType)
 }
 
+/** 按来源和标题去重 RAG 证据。 */
 function dedupeSources(sources: AgentKnowledgeHit[]) {
   const seen = new Set<string>()
   return sources.filter((source) => {
@@ -195,6 +206,7 @@ function dedupeSources(sources: AgentKnowledgeHit[]) {
   })
 }
 
+/** 追加或合并可视化思考步骤。 */
 function appendThinkingStep(title: string, detail: string, status: AgentTraceStep['status'] = 'running') {
   const key = thinkingStepKey(title, detail)
   const existing = thinkingSteps.value.findIndex((step) => thinkingStepKey(step.title, step.detail) === key)
@@ -209,6 +221,7 @@ function appendThinkingStep(title: string, detail: string, status: AgentTraceSte
     : [...thinkingSteps.value, step].slice(-8)
 }
 
+/** 把快速到达的 SSE 思考事件放入节奏队列。 */
 function enqueueThinkingStep(title: string, detail: string, status: AgentTraceStep['status'] = 'running') {
   const revealStatus = status === 'done' ? 'running' : status
   thinkingQueue.push({
@@ -221,12 +234,14 @@ function enqueueThinkingStep(title: string, detail: string, status: AgentTraceSt
   scheduleThinkingQueue()
 }
 
+/** 按固定间隔消费思考队列，避免界面瞬时跳动。 */
 function scheduleThinkingQueue() {
   if (thinkingQueueTimer !== null) return
   const delay = thinkingSteps.value.length ? THINKING_STEP_DELAY_MS : FIRST_THINKING_DELAY_MS
   thinkingQueueTimer = window.setTimeout(flushThinkingQueue, delay)
 }
 
+/** 立即完成剩余思考队列。 */
 function flushThinkingQueue() {
   thinkingQueueTimer = null
   const next = thinkingQueue.shift()
@@ -241,6 +256,7 @@ function flushThinkingQueue() {
   if (thinkingQueue.length) scheduleThinkingQueue()
 }
 
+/** 清理 Agent 思考动画的队列和计时器。 */
 function resetThinkingStream() {
   thinkingSteps.value = []
   thinkingQueue.splice(0)
@@ -254,14 +270,17 @@ function resetThinkingStream() {
   }
 }
 
+/** 处理 thinkingStepKey 对应的组件交互或数据转换逻辑。 */
 function thinkingStepKey(title: string, detail: string) {
   return `${title.trim()}|${detail.replace(/\s+/g, ' ').trim()}`
 }
 
+/** 把未知异常归一化为可展示文本。 */
 function extractErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
+/** 按事件类型更新方案生成状态、证据和最终计划。 */
 function handlePlanStreamEvent(event: AgentStreamEvent) {
   if (event.event === 'thought') {
     enqueueThinkingStep(
@@ -293,6 +312,7 @@ function handlePlanStreamEvent(event: AgentStreamEvent) {
   }
 }
 
+/** 按事件类型更新确认提交、任务进度和结果。 */
 async function handleConfirmStreamEvent(event: AgentStreamEvent) {
   if (event.event === 'status' || event.event === 'done') {
     const message = typeof event.data.message === 'string' ? event.data.message : '任务状态已更新'
@@ -341,6 +361,7 @@ async function handleConfirmStreamEvent(event: AgentStreamEvent) {
   }
 }
 
+/** 根据 Agent 推荐重建可编辑执行单。 */
 function resetExecutionSheet() {
   if (!store.activePlan) return
   const executableIds = store.activePlan.recommendations
@@ -355,6 +376,7 @@ function resetExecutionSheet() {
   executionSheet.priority = 3
 }
 
+/** 在执行单中增删可执行指数。 */
 function toggleExecutionIndex(indexId: string) {
   if (executionSheet.indices.includes(indexId)) {
     executionSheet.indices = executionSheet.indices.filter((item) => item !== indexId)
@@ -363,6 +385,7 @@ function toggleExecutionIndex(indexId: string) {
   executionSheet.indices = [...executionSheet.indices, indexId]
 }
 
+/** 校验并提交用户知识文档。 */
 async function importKnowledge() {
   if (!knowledgeDraft.content.trim()) {
     errorMessage.value = '请先输入或上传指数说明文档内容'
@@ -386,6 +409,7 @@ async function importKnowledge() {
   }
 }
 
+/** 读取本地文本文件并填入知识导入表单。 */
 async function readKnowledgeFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -396,6 +420,7 @@ async function readKnowledgeFile(event: Event) {
   input.value = ''
 }
 
+/** 校验输入后启动 Agent SSE 方案生成。 */
 async function generatePlan() {
   const message = prompt.value.trim()
   if (!message) return
@@ -424,6 +449,7 @@ async function generatePlan() {
   }
 }
 
+/** 提交人工确认后的执行单并流式跟踪任务。 */
 async function confirmPlan() {
   if (!store.activePlan || !store.asset.localPath) {
     errorMessage.value = '请先通过上方按钮或拖拽导入GeoTIFF影像'
@@ -513,6 +539,7 @@ onBeforeUnmount(() => {
   resetThinkingStream()
 })
 
+/** 请求 Agent 根据当前产品统计生成解释。 */
 async function interpretResults() {
   if (!interpretationProducts.value.length) {
     errorMessage.value = '请先完成一次指数计算，或在结果面板中选中一个产品'
@@ -906,10 +933,10 @@ async function interpretResults() {
 .agent-scroll {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   min-height: 0;
   overflow: auto;
-  padding-right: 3px;
+  padding: 0 3px 14px 0;
   isolation: isolate;
 }
 
@@ -1076,10 +1103,12 @@ async function interpretResults() {
 
 .message-timeline {
   display: grid;
+  max-height: min(220px, 24dvh);
   min-height: 96px;
   gap: 8px;
-  align-content: end;
+  align-content: start;
   margin-top: 0;
+  overflow: auto;
   padding: 2px 3px 8px 0;
 }
 
@@ -1297,6 +1326,7 @@ async function interpretResults() {
 .confirm-button,
 .secondary-button {
   width: 100%;
+  min-height: 42px;
   padding: 12px;
   border: 0;
   background: var(--acid);
@@ -1305,6 +1335,8 @@ async function interpretResults() {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 
@@ -1316,6 +1348,7 @@ async function interpretResults() {
 }
 
 .details-toggle {
+  flex-shrink: 0;
   min-height: 30px;
   padding: 0 10px;
   border: 1px solid var(--border-strong);
@@ -1366,6 +1399,9 @@ async function interpretResults() {
 .plan-card {
   position: relative;
   z-index: 0;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
   min-height: 0;
   margin: 8px 0 2px;
   padding: 16px 14px;
@@ -1377,6 +1413,7 @@ async function interpretResults() {
 
 .plan-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
@@ -1395,9 +1432,11 @@ async function interpretResults() {
 }
 
 .plan-card > p {
+  margin: 0;
   color: var(--muted-light);
   font-size: 11px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .agent-mode {
@@ -1416,13 +1455,13 @@ async function interpretResults() {
 }
 
 .llm-message {
-  margin-top: 8px;
+  margin: 0;
 }
 
 .plan-metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin: 14px -14px 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 2px -14px 0;
   border-block: 1px solid var(--border);
 }
 
@@ -1449,6 +1488,7 @@ async function interpretResults() {
   color: var(--text-1);
   font-family: var(--font-mono);
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .recommendations {
@@ -1637,6 +1677,7 @@ async function interpretResults() {
 }
 
 .execution-sheet {
+  min-width: 0;
   margin: 14px -14px 0;
   padding: 12px 14px;
   border: 1px solid var(--border-strong);
@@ -1656,9 +1697,10 @@ async function interpretResults() {
 
 .execution-indices label {
   display: grid;
-  grid-template-columns: 22px 56px minmax(0, 1fr);
+  grid-template-columns: 22px minmax(52px, max-content) minmax(0, 1fr);
   gap: 8px;
-  align-items: center;
+  align-items: start;
+  min-width: 0;
   min-height: 34px;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -1677,12 +1719,14 @@ async function interpretResults() {
 }
 
 .execution-indices small {
+  min-width: 0;
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .execution-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr 0.8fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(92px, 0.8fr);
   gap: 8px;
   margin-top: 10px;
 }
@@ -1690,6 +1734,7 @@ async function interpretResults() {
 .execution-controls label {
   display: grid;
   gap: 5px;
+  min-width: 0;
 }
 
 .execution-controls span {
@@ -1704,26 +1749,33 @@ async function interpretResults() {
 }
 
 .insight-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
 
 .insight-card h3 {
-  margin: 7px 0;
+  margin: 0;
   font-family: var(--font-display);
   font-size: 19px;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .insight-card > p {
+  margin: 0;
   color: var(--muted-light);
   font-size: 11px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .insight-row {
-  margin-top: 8px;
+  min-width: 0;
+  margin-top: 0;
   padding: 9px;
   border-left: 2px solid var(--acid);
   background: var(--surface-hover);
@@ -1748,10 +1800,12 @@ async function interpretResults() {
 
 .insight-row small,
 .next-actions p {
-  margin-top: 5px;
+  min-width: 0;
+  margin: 5px 0 0;
   color: var(--muted-light);
   font-size: 9px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .next-actions {
@@ -1898,6 +1952,43 @@ async function interpretResults() {
 
   .execution-controls {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-panel {
+    padding: 16px;
+  }
+
+  .agent-header {
+    flex-wrap: wrap;
+  }
+
+  .header-actions,
+  .details-toggle {
+    width: 100%;
+  }
+
+  .config-button {
+    flex: 1 1 0;
+  }
+
+  .plan-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-metrics div + div {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .execution-indices label {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .execution-indices span,
+  .execution-indices small {
+    grid-column: 2;
   }
 }
 

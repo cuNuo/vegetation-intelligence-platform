@@ -1,3 +1,9 @@
+# backend/app/services/raster_pipeline.py
+# 文件说明：Rasterio 分块计算、统计、预览与溯源流水线。
+# 主要职责：验证波段、生成窗口、共享读取、计算、写出和登记产物。
+# 对外入口：RasterTask、RasterPipeline、task_as_dict。
+# 依赖边界：所有执行路径共用的唯一栅格实现。
+
 """Rasterio分块计算、统计、预览和可复现清单。"""
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ CancelCallback = Callable[[], bool]
 
 @dataclass(slots=True)
 class RasterTask:
+    """封装 RasterTask 相关状态、约束和可复用行为。"""
     source_path: str
     output_dir: str
     indices: list[str]
@@ -39,6 +46,7 @@ class RasterTask:
 
 
 def _file_sha256(path: Path) -> str:
+    """完成模块内部的 file_sha256 辅助处理。"""
     digest = hashlib.sha256()
     with path.open("rb") as file:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
@@ -47,6 +55,7 @@ def _file_sha256(path: Path) -> str:
 
 
 def _statistics(array: np.ndarray, nodata: float) -> dict[str, Any]:
+    """完成模块内部的 statistics 辅助处理。"""
     valid = array[np.isfinite(array) & (array != nodata)]
     if valid.size == 0:
         return {
@@ -73,7 +82,37 @@ def _statistics(array: np.ndarray, nodata: float) -> dict[str, Any]:
     }
 
 
+def _infer_reflectance_divisor(array: np.ndarray, dtype_name: str) -> float | None:
+    """为缺少 scale 标签的常见整数反射率影像推断归一化分母。"""
+    if np.issubdtype(np.dtype(dtype_name), np.floating):
+        return None
+    finite = array[np.isfinite(array)]
+    if finite.size == 0:
+        return None
+    high = float(np.nanpercentile(finite, 98))
+    if high <= 1.5:
+        return None
+    if high <= 255:
+        return 255.0
+    if high <= 12000:
+        return 10000.0
+    dtype = np.dtype(dtype_name)
+    if np.issubdtype(dtype, np.integer):
+        return float(np.iinfo(dtype).max)
+    return None
+
+
+def _to_reflectance(array: np.ndarray, dtype_name: str, scale: float, offset: float) -> np.ndarray:
+    """把源波段转为 0-1 反射率语义，供带常数项的指数公式使用。"""
+    result = array.astype(np.float32, copy=False)
+    if scale not in (0, 1) or offset != 0:
+        return result * np.float32(scale) + np.float32(offset)
+    divisor = _infer_reflectance_divisor(result, dtype_name)
+    return result / np.float32(divisor) if divisor else result
+
+
 def _write_preview(source_path: Path, target_path: Path, nodata: float) -> None:
+    """完成模块内部的 write_preview 辅助处理。"""
     import rasterio
     from PIL import Image
 
@@ -95,9 +134,11 @@ def _write_preview(source_path: Path, target_path: Path, nodata: float) -> None:
 
 
 class RasterPipeline:
+    """协调窗口读取、共享计算、顺序写出、统计和产物登记。"""
     nodata = -9999.0
 
     def __init__(self) -> None:
+        """初始化实例依赖、运行状态和可配置参数。"""
         self.planner = ExecutionPlanner()
 
     def run(
@@ -106,6 +147,7 @@ class RasterPipeline:
         on_progress: ProgressCallback | None = None,
         is_cancelled: CancelCallback | None = None,
     ) -> dict[str, Any]:
+        """执行完整任务或基准流程，并返回结构化结果。"""
         import rasterio
         from rasterio.enums import Resampling
         from rasterio.warp import transform_bounds
@@ -117,6 +159,8 @@ class RasterPipeline:
         output_dir.mkdir(parents=True, exist_ok=True)
         definitions = [get_index(index_id) for index_id in task.indices]
 
+        # 先对全部指数求逻辑波段并集。同一窗口中每个物理波段只读取一次，
+        # 后续多个指数共享 arrays，避免“指数数量 × 磁盘读取次数”的 I/O 放大。
         required_bands = sorted({band for item in definitions for band in item.required_bands})
         missing_mapping = set(required_bands) - task.bands.keys()
         if missing_mapping:
@@ -142,6 +186,8 @@ class RasterPipeline:
             engine = self._create_engine(decision.selected)
             profile = source.profile.copy()
             block_size = max(128, min(2048, task.block_size))
+            # GeoTIFF 的 tile 宽高要求为 16 的倍数。请求值不满足时使用稳定的
+            # 1024 写块，但计算窗口仍使用用户请求值，两者职责彼此独立。
             profile.update(
                 driver="GTiff",
                 count=1,
@@ -181,10 +227,19 @@ class RasterPipeline:
                     masks: list[np.ndarray] = []
                     for logical_name in required_bands:
                         band_number = task.bands[logical_name]
+                        band_index = band_number - 1
                         array = source.read(band_number, window=window, out_dtype="float32")
+                        # Rasterio mask 与显式 nodata 都表示无效像元。计算前统一改为
+                        # NaN，使所有数组引擎使用相同语义；写出前再改为固定 nodata。
                         invalid_mask = source.read_masks(band_number, window=window) == 0
                         if source.nodata is not None:
                             invalid_mask |= np.isclose(array, source.nodata)
+                        array = _to_reflectance(
+                            array,
+                            source.dtypes[band_index],
+                            source.scales[band_index],
+                            source.offsets[band_index],
+                        )
                         array[invalid_mask] = np.nan
                         arrays[logical_name] = array
                         masks.append(invalid_mask)
@@ -192,6 +247,8 @@ class RasterPipeline:
                     actual_engine = result.engine
                     if result.fallback_reason:
                         fallback_reasons.append(result.fallback_reason)
+                    # 任一必需波段无效时，该像元的所有指数均不可信，因此采用逻辑或
+                    # 合并掩膜，而不是让不同指数产生相互矛盾的有效区域。
                     combined_mask = np.logical_or.reduce(masks)
                     for index_id, array in result.arrays.items():
                         array[combined_mask] = self.nodata
@@ -206,6 +263,8 @@ class RasterPipeline:
         for definition in definitions:
             output_path = output_paths[definition.id]
             with rasterio.open(output_path, "r+") as dataset:
+                # 结果 overview 用 average 降采样，服务于缩放浏览；它不会改变
+                # 全分辨率主波段，因此统计和下载仍基于原始计算结果。
                 factors = [
                     factor
                     for factor in (2, 4, 8, 16)
@@ -249,6 +308,8 @@ class RasterPipeline:
                 }
             )
 
+        # manifest 同时记录输入哈希、请求引擎、实际引擎与回退原因，
+        # 用于答辩复现、结果追责和后续性能基准分析。
         manifest = {
             "source": str(source_path),
             "sourceSha256": _file_sha256(source_path),
@@ -279,6 +340,7 @@ class RasterPipeline:
 
     @staticmethod
     def _create_engine(name: str) -> Any:
+        """完成模块内部的 create_engine 辅助处理。"""
         if name == "torch":
             return TorchEngine()
         if name == "joblib":
@@ -287,4 +349,5 @@ class RasterPipeline:
 
 
 def task_as_dict(task: RasterTask) -> dict[str, Any]:
+    """执行 task_as_dict 对应的领域操作并返回结构化结果。"""
     return asdict(task)

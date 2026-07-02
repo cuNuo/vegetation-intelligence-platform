@@ -1,3 +1,9 @@
+# backend/scripts/benchmark.py
+# 文件说明：多计算引擎公式微基准脚本。
+# 主要职责：生成固定波段并测量耗时与数值误差。
+# 对外入口：run、命令行入口。
+# 依赖边界：不参与在线请求。
+
 """多引擎公式计算微基准。"""
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ from app.engines.torch_engine import TorchEngine
 
 
 def run(size: int, repeats: int) -> list[dict[str, object]]:
+    """执行完整任务或基准流程，并返回结构化结果。"""
     random = np.random.default_rng(42)
     bands = {
         name: random.uniform(0.05, 0.9, (size, size)).astype(np.float32)

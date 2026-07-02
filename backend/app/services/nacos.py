@@ -1,3 +1,9 @@
+# backend/app/services/nacos.py
+# 文件说明：FastAPI 服务的 Nacos 注册与心跳。
+# 主要职责：注册实例、周期续约并在关闭时注销。
+# 对外入口：NacosRegistration、nacos_registration。
+# 依赖边界：注册失败不得阻断本地开发。
+
 """Nacos实例注册与心跳。"""
 
 from __future__ import annotations
@@ -13,16 +19,20 @@ from app.settings import settings
 
 
 class NacosRegistration:
+    """封装 NacosRegistration 相关状态、约束和可复用行为。"""
     def __init__(self) -> None:
+        """初始化实例依赖、运行状态和可配置参数。"""
         self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
+        """执行 start 对应的领域操作并返回结构化结果。"""
         if not settings.nacos_url:
             return
         await self._register()
         self._heartbeat_task = asyncio.create_task(self._heartbeat())
 
     async def stop(self) -> None:
+        """执行 stop 对应的领域操作并返回结构化结果。"""
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -37,6 +47,7 @@ class NacosRegistration:
                 )
 
     async def _register(self) -> None:
+        """完成模块内部的 register 辅助处理。"""
         async with httpx.AsyncClient(timeout=5) as client:
             response = await client.post(
                 f"{settings.nacos_url.rstrip('/')}/nacos/v1/ns/instance",
@@ -45,6 +56,7 @@ class NacosRegistration:
             response.raise_for_status()
 
     async def _heartbeat(self) -> None:
+        """完成模块内部的 heartbeat 辅助处理。"""
         while True:
             await asyncio.sleep(5)
             try:
@@ -69,6 +81,7 @@ class NacosRegistration:
 
     @staticmethod
     def _params() -> dict[str, str | int]:
+        """完成模块内部的 params 辅助处理。"""
         try:
             service_ip = socket.gethostbyname(settings.service_host)
         except socket.gaierror:

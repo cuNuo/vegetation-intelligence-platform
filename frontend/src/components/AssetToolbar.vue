@@ -1,5 +1,9 @@
 <!-- frontend/src/components/AssetToolbar.vue -->
-<!-- 文件说明：影像上传、导入队列、波段映射和批量任务提交工具栏。 -->
+<!-- 文件说明：影像资产与波段映射工具栏。 -->
+<!-- 主要职责：上传 GeoTIFF、跟踪进度、编辑波段映射并提交批量任务。 -->
+<!-- 对外约定：workspace store 与 Platform API。 -->
+<!-- 依赖边界：文件读取和提交错误必须反馈到 store。 -->
+
 <script setup lang="ts">
 import { computed, shallowRef, useTemplateRef } from 'vue'
 import { usePlatformApi } from '@/composables/usePlatformApi'
@@ -13,6 +17,10 @@ const isDragging = shallowRef(false)
 const isUploading = shallowRef(false)
 const isSubmittingBatch = shallowRef(false)
 const isMappingOpen = shallowRef(false)
+const isIndexExtractionOpen = shallowRef(false)
+const indexSearchQuery = shallowRef('')
+const activeIndexCategory = shallowRef('all')
+const selectedManualIndexIds = shallowRef<string[]>([])
 const uploadingFileName = shallowRef('')
 const currentUploadProgress = shallowRef(0)
 const totalUploadProgress = shallowRef(0)
@@ -58,7 +66,44 @@ const bandRows = computed(() =>
     value: store.asset.bandMapping[key] ?? 0,
   })),
 )
-const batchIndices = computed(() => store.activePlan?.selectedIndices ?? ['ndvi'])
+const indexCategories = computed(() => [
+  ...new Set(store.indices.flatMap((index) => index.categories)),
+].sort((left, right) => left.localeCompare(right)))
+const indexSelectionCards = computed(() =>
+  store.indices.map((index) => {
+    const missingBands = index.requiredBands.filter(
+      (band) => !store.asset.availableBands.includes(band),
+    )
+    return {
+      ...index,
+      missingBands,
+      disabled: missingBands.length > 0,
+      selected: selectedManualIndexIds.value.includes(index.id),
+    }
+  }),
+)
+const filteredIndexCards = computed(() => {
+  const keyword = indexSearchQuery.value.trim().toLowerCase()
+  return indexSelectionCards.value.filter((index) => {
+    const matchesCategory =
+      activeIndexCategory.value === 'all' || index.categories.includes(activeIndexCategory.value)
+    const haystack = [
+      index.id,
+      index.name,
+      index.formula,
+      index.description,
+      ...index.recommendationTags,
+      ...index.categories,
+    ].join(' ').toLowerCase()
+    return matchesCategory && (!keyword || haystack.includes(keyword))
+  })
+})
+const selectedManualIndices = computed(() =>
+  store.indices.filter((index) => selectedManualIndexIds.value.includes(index.id)),
+)
+const executableFilteredIndexCount = computed(() =>
+  filteredIndexCards.value.filter((index) => !index.disabled).length,
+)
 const uploadStageLabel = computed(() => {
   const labels = {
     idle: '等待影像',
@@ -86,10 +131,12 @@ const pyramidStatusLabel = computed(() => {
   return '等待影像'
 })
 
+/** 打开隐藏文件选择器。 */
 function openPicker() {
   fileInput.value?.click()
 }
 
+/** 串行上传选择的 GeoTIFF，并逐文件更新进度和资产列表。 */
 async function uploadFiles(files: FileList | File[]) {
   const geotiffs = Array.from(files).filter((file) => /\.tiff?$/i.test(file.name))
   if (!geotiffs.length) {
@@ -142,34 +189,70 @@ async function uploadFiles(files: FileList | File[]) {
   }
 }
 
+/** 处理文件选择器变更并清空 input 以允许重复选择。 */
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   if (input.files) void uploadFiles(input.files)
   input.value = ''
 }
 
+/** 处理拖拽文件并复用统一上传流程。 */
 function onDrop(event: DragEvent) {
   isDragging.value = false
   if (event.dataTransfer?.files) void uploadFiles(event.dataTransfer.files)
 }
 
-async function submitBatch() {
+/** 打开手动植被指数提取弹窗，并按当前方案或 NDVI 初始化选择。 */
+function openIndexExtraction() {
+  if (!store.asset.queue.length) {
+    message.value = '请先导入至少一个GeoTIFF影像'
+    return
+  }
+  if (!store.indices.length) {
+    message.value = '指数目录尚未加载完成，请先刷新服务状态'
+    return
+  }
+  const availableIds = new Set(indexSelectionCards.value.filter((index) => !index.disabled).map((index) => index.id))
+  const planIds = store.activePlan?.selectedIndices.filter((indexId) => availableIds.has(indexId)) ?? []
+  const defaultIds = planIds.length
+    ? planIds
+    : availableIds.has('ndvi')
+      ? ['ndvi']
+      : [...availableIds].slice(0, 1)
+  selectedManualIndexIds.value = defaultIds
+  indexSearchQuery.value = ''
+  activeIndexCategory.value = 'all'
+  isIndexExtractionOpen.value = true
+}
+
+/** 校验后提交用户在弹窗中手动选择的指数。 */
+async function submitManualIndexExtraction() {
+  if (!selectedManualIndexIds.value.length) {
+    message.value = '请至少选择一个可执行指数'
+    return
+  }
+  await submitSelectedIndices(selectedManualIndexIds.value)
+  isIndexExtractionOpen.value = false
+}
+
+/** 把一组指数提交给当前批量队列，任务管理器由全局轮询刷新。 */
+async function submitSelectedIndices(indices: string[]) {
   if (!store.asset.queue.length) {
     message.value = '请先导入至少一个GeoTIFF影像'
     return
   }
   isSubmittingBatch.value = true
-  message.value = `正在提交 ${store.asset.queue.length} 个批量任务…`
+  message.value = `正在提交 ${store.asset.queue.length} 个影像的 ${indices.length} 个指数任务…`
   try {
     for (const asset of store.asset.queue) {
       await api.executeAssetBatch(
         asset.localPath,
-        batchIndices.value,
+        indices,
         store.asset.bandMapping,
         store.activePlan?.engine ?? 'auto',
       )
     }
-    message.value = `已提交 ${store.asset.queue.length} 个异步任务，任务中心将自动刷新`
+    message.value = `已提交 ${store.asset.queue.length} 个异步任务，任务管理器将自动刷新`
   } catch (error) {
     message.value = error instanceof Error ? error.message : '批量任务提交失败'
   } finally {
@@ -177,11 +260,35 @@ async function submitBatch() {
   }
 }
 
+/** 在手动提取弹窗里切换单个指数，缺失波段的指数不可选。 */
+function toggleManualIndex(indexId: string) {
+  const card = indexSelectionCards.value.find((item) => item.id === indexId)
+  if (!card || card.disabled) return
+  selectedManualIndexIds.value = card.selected
+    ? selectedManualIndexIds.value.filter((item) => item !== indexId)
+    : [...selectedManualIndexIds.value, indexId]
+}
+
+/** 选择当前搜索和分类结果中的全部可执行指数。 */
+function selectVisibleExecutableIndices() {
+  const visibleIds = filteredIndexCards.value
+    .filter((index) => !index.disabled)
+    .map((index) => index.id)
+  selectedManualIndexIds.value = [...new Set([...selectedManualIndexIds.value, ...visibleIds])]
+}
+
+/** 把逻辑波段名转换成弹窗可读标签。 */
+function formatBandName(band: string) {
+  return bandLabels[band] ?? band
+}
+
+/** 把下拉框选择写回逻辑波段映射。 */
 function updateBandMapping(logicalBand: string, event: Event) {
   const select = event.target as HTMLSelectElement
   store.setBandMapping(logicalBand, Number(select.value))
 }
 
+/** 检查当前方案所需波段是否全部有效映射。 */
 function validateBandMapping() {
   if (!hasWavelengthMetadata.value && selectedAsset.value) {
     message.value = '该影像未提供波长元数据，已按常见多光谱顺序兜底；请在弹窗中人工核对。'
@@ -269,9 +376,9 @@ function validateBandMapping() {
     <button
       class="batch-action"
       :disabled="isSubmittingBatch || isUploading || !store.asset.queue.length"
-      @click="submitBatch"
+      @click="openIndexExtraction"
     >
-      {{ isSubmittingBatch ? '提交中…' : `批量处理 ${batchIndices.join(' + ').toUpperCase()}` }}
+      {{ isSubmittingBatch ? '提交中…' : '植被指数提取' }}
     </button>
 
     <div v-if="isMappingOpen" class="modal-backdrop" @click.self="isMappingOpen = false">
@@ -317,6 +424,85 @@ function validateBandMapping() {
           {{ store.bandValidation.messages.join('；') }}
         </p>
         <button type="button" class="save-mapping-button" @click="isMappingOpen = false">完成</button>
+      </section>
+    </div>
+
+    <div v-if="isIndexExtractionOpen" class="modal-backdrop" @click.self="isIndexExtractionOpen = false">
+      <section class="index-extraction-modal" role="dialog" aria-modal="true" aria-label="植被指数提取">
+        <header class="mapping-header">
+          <div>
+            <span>植被指数提取</span>
+            <strong>{{ selectedManualIndexIds.length }} 个指数已选择</strong>
+          </div>
+          <button type="button" class="close-button" @click="isIndexExtractionOpen = false">×</button>
+        </header>
+
+        <div class="index-submit-summary">
+          <span>{{ store.asset.queue.length }} 个影像将提交到任务管理器</span>
+          <span>{{ mappedBandCount }} / 7 个逻辑波段已映射</span>
+          <span>{{ executableFilteredIndexCount }} 个当前筛选结果可执行</span>
+        </div>
+
+        <div class="index-filter-bar">
+          <label>
+            <span>搜索指数</span>
+            <input
+              v-model="indexSearchQuery"
+              type="search"
+              placeholder="输入 NDVI、叶绿素、water、公式关键词"
+            />
+          </label>
+          <label>
+            <span>分类筛选</span>
+            <select v-model="activeIndexCategory">
+              <option value="all">全部分类</option>
+              <option v-for="category in indexCategories" :key="category" :value="category">
+                {{ category }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div class="index-dialog-actions">
+          <button type="button" @click="selectVisibleExecutableIndices">选择当前可执行</button>
+          <button type="button" @click="selectedManualIndexIds = []">清空选择</button>
+        </div>
+
+        <div class="manual-index-grid" aria-label="可选植被指数">
+          <button
+            v-for="index in filteredIndexCards"
+            :key="index.id"
+            type="button"
+            :class="{ selected: index.selected, disabled: index.disabled }"
+            :disabled="index.disabled"
+            @click="toggleManualIndex(index.id)"
+          >
+            <span class="manual-index-code">{{ index.id.toUpperCase() }}</span>
+            <strong>{{ index.name }}</strong>
+            <small>{{ index.formula }}</small>
+            <em v-if="index.disabled">
+              缺少 {{ index.missingBands.map(formatBandName).join(' / ') }}
+            </em>
+            <em v-else>
+              可执行 · {{ index.categories.slice(0, 2).join(' / ') || '未分类' }}
+            </em>
+          </button>
+        </div>
+
+        <div v-if="selectedManualIndices.length" class="selected-index-strip">
+          <span v-for="index in selectedManualIndices" :key="index.id">
+            {{ index.id.toUpperCase() }}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          class="save-mapping-button submit-index-button"
+          :disabled="isSubmittingBatch || !selectedManualIndexIds.length"
+          @click="submitManualIndexExtraction"
+        >
+          {{ isSubmittingBatch ? '提交中…' : '提交任务' }}
+        </button>
       </section>
     </div>
   </section>
@@ -538,6 +724,19 @@ function validateBandMapping() {
   padding: clamp(16px, 2vw, 22px);
 }
 
+.index-extraction-modal {
+  display: grid;
+  gap: 14px;
+  width: min(980px, 100%);
+  max-height: min(780px, calc(100dvh - 32px));
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-0);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.32);
+  padding: clamp(16px, 2vw, 22px);
+}
+
 .mapping-header {
   display: flex;
   align-items: flex-start;
@@ -581,6 +780,127 @@ function validateBandMapping() {
   color: var(--text-2);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.index-submit-summary,
+.index-dialog-actions,
+.selected-index-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.index-submit-summary span,
+.selected-index-strip span {
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font: 12px var(--font-mono);
+  padding: 6px 8px;
+}
+
+.index-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(180px, 0.65fr);
+  gap: 10px;
+}
+
+.index-filter-bar label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.index-filter-bar span {
+  color: var(--text-3);
+  font: 12px var(--font-mono);
+}
+
+.index-filter-bar input,
+.index-filter-bar select {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: 13px;
+  padding: 0 10px;
+}
+
+.index-dialog-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--acid);
+  font: 700 12px var(--font-mono);
+  cursor: pointer;
+}
+
+.manual-index-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.manual-index-grid button {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 138px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.manual-index-grid button.selected {
+  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface-1));
+}
+
+.manual-index-grid button.disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.manual-index-code {
+  color: var(--acid);
+  font: 800 12px var(--font-mono);
+}
+
+.manual-index-grid strong,
+.manual-index-grid small,
+.manual-index-grid em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.manual-index-grid strong {
+  font-size: 13px;
+}
+
+.manual-index-grid small {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.manual-index-grid em {
+  color: var(--text-2);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.manual-index-grid button.disabled em {
+  color: var(--warning);
+}
+
+.submit-index-button {
+  justify-self: end;
 }
 
 .band-grid {
@@ -639,7 +959,8 @@ function validateBandMapping() {
 }
 
 .primary-action:disabled,
-.batch-action:disabled {
+.batch-action:disabled,
+.save-mapping-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -675,6 +996,10 @@ function validateBandMapping() {
   }
 
   .source-band-list {
+    grid-template-columns: 1fr;
+  }
+
+  .index-filter-bar {
     grid-template-columns: 1fr;
   }
 

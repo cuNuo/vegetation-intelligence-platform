@@ -1,3 +1,9 @@
+<!-- frontend/src/components/StatisticsDashboard.vue -->
+<!-- 文件说明：结果统计与 ECharts 面板。 -->
+<!-- 主要职责：展示产品统计并维护图表创建、更新和销毁生命周期。 -->
+<!-- 对外约定：products/activeIndex props。 -->
+<!-- 依赖边界：图表实例不得跨产品残留。 -->
+
 <script setup lang="ts">
 import {
   computed,
@@ -31,6 +37,7 @@ const stats = computed(() => product.value?.statistics)
 let resizeObserver: ResizeObserver | undefined
 let themeObserver: MutationObserver | undefined
 
+/** 根据当前产品统计创建或更新 ECharts 图表。 */
 async function renderChart() {
   await nextTick()
   if (!chartContainer.value || !stats.value) return

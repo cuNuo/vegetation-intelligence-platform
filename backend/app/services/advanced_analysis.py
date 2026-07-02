@@ -1,3 +1,9 @@
+# backend/app/services/advanced_analysis.py
+# 文件说明：自定义公式、变化检测和地块统计服务。
+# 主要职责：AST 白名单校验、窗口变化计算和 GeoJSON 统计。
+# 对外入口：validate_custom_expression、detect_change、calculate_zonal_statistics。
+# 依赖边界：禁止任意代码执行。
+
 """安全自定义公式、分块变化检测与GeoJSON地块统计。"""
 
 from __future__ import annotations
@@ -21,29 +27,36 @@ ALLOWED_OPERATORS = (
 
 
 class SafeExpressionValidator(ast.NodeVisitor):
+    """遍历 AST 并拒绝白名单之外的名称、调用和语法。"""
     def __init__(self, allowed_names: set[str]) -> None:
+        """初始化实例依赖、运行状态和可配置参数。"""
         self.allowed_names = allowed_names
 
     def visit_Name(self, node: ast.Name) -> None:
+        """校验 AST Name 节点是否符合公式白名单。"""
         if node.id not in self.allowed_names and node.id not in ALLOWED_FUNCTIONS:
             raise ValueError(f"表达式包含未允许名称: {node.id}")
 
     def visit_Call(self, node: ast.Call) -> None:
+        """校验 AST Call 节点是否符合公式白名单。"""
         if not isinstance(node.func, ast.Name) or node.func.id not in ALLOWED_FUNCTIONS:
             raise ValueError("只允许abs、sqrt、minimum、maximum函数")
         self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
+        """校验 AST BinOp 节点是否符合公式白名单。"""
         if not isinstance(node.op, ALLOWED_OPERATORS):
             raise ValueError(f"不允许的运算符: {type(node.op).__name__}")
         self.generic_visit(node)
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> None:
+        """校验 AST UnaryOp 节点是否符合公式白名单。"""
         if not isinstance(node.op, ALLOWED_OPERATORS):
             raise ValueError(f"不允许的单目运算符: {type(node.op).__name__}")
         self.generic_visit(node)
 
     def generic_visit(self, node: ast.AST) -> None:
+        """执行 generic_visit 对应的领域操作并返回结构化结果。"""
         forbidden = (
             ast.Attribute,
             ast.Subscript,
@@ -60,6 +73,7 @@ class SafeExpressionValidator(ast.NodeVisitor):
 
 
 def validate_custom_expression(expression: str, allowed_bands: list[str]) -> dict[str, Any]:
+    """执行 validate_custom_expression 对应的领域操作并返回结构化结果。"""
     tree = ast.parse(expression, mode="eval")
     SafeExpressionValidator(set(allowed_bands)).visit(tree)
     names = sorted(
@@ -75,6 +89,7 @@ def validate_custom_expression(expression: str, allowed_bands: list[str]) -> dic
 def evaluate_custom_expression(
     expression: str, arrays: dict[str, np.ndarray]
 ) -> np.ndarray:
+    """执行 evaluate_custom_expression 对应的领域操作并返回结构化结果。"""
     validate_custom_expression(expression, list(arrays))
     functions = {
         "abs": np.abs,
@@ -97,6 +112,7 @@ def detect_change(
     decrease_threshold: float,
     increase_threshold: float,
 ) -> dict[str, Any]:
+    """逐窗口计算两期影像差值与阈值分类。"""
     import rasterio
 
     before_resolved = Path(before_path).resolve()
@@ -140,6 +156,7 @@ def detect_change(
 
 
 def calculate_zonal_statistics(raster_path: str, geojson: dict[str, Any]) -> dict[str, Any]:
+    """按 GeoJSON 几何掩膜计算有效像元统计。"""
     import rasterio
     from rasterio.mask import mask
 

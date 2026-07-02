@@ -1,5 +1,9 @@
 # backend/app/services/agent.py
-# 文件说明：植被分析 Agent 的意图识别、方案生成、确认与结果解读。
+# 文件说明：需人工确认的植被分析 Agent。
+# 主要职责：意图识别、RAG、推荐、执行单和结果解释。
+# 对外入口：VegetationAgent、vegetation_agent。
+# 依赖边界：LLM 只增强理解，未确认不得执行。
+
 """可解释、需确认的植被分析方案智能体。"""
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from app.settings import settings
 
 @dataclass(frozen=True, slots=True)
 class IntentRule:
+    """封装 IntentRule 相关状态、约束和可复用行为。"""
     intent: str
     title: str
     keywords: tuple[str, ...]
@@ -78,7 +83,9 @@ RULES = (
 
 
 class VegetationAgent:
+    """把自然语言目标转换为可解释、可编辑且需确认的分析方案。"""
     def __init__(self) -> None:
+        """初始化实例依赖、运行状态和可配置参数。"""
         self._plans: dict[str, dict[str, Any]] = {}
 
     async def create_plan(
@@ -93,6 +100,7 @@ class VegetationAgent:
         custom_index: dict[str, Any] | None = None,
         session_id: str | None = None,
     ) -> dict[str, Any]:
+        """结合规则、注册表、RAG 和可选 LLM 生成结构化计划。"""
         session_id = session_id or create_session(message)
         append_event(
             session_id,
@@ -238,6 +246,7 @@ class VegetationAgent:
         return plan
 
     def get_plan(self, plan_id: str) -> dict[str, Any]:
+        """执行 get_plan 对应的领域操作并返回结构化结果。"""
         try:
             return self._plans[plan_id]
         except KeyError as error:
@@ -249,6 +258,7 @@ class VegetationAgent:
         job_id: str,
         execution_sheet: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """记录人工确认后的执行单和关联任务编号。"""
         plan = self.get_plan(plan_id)
         if not plan["canExecute"]:
             raise ValueError("方案缺少必需波段，不能执行")
@@ -283,10 +293,12 @@ class VegetationAgent:
         return plan
 
     def get_session_events(self, session_id: str) -> list[dict[str, Any]]:
+        """执行 get_session_events 对应的领域操作并返回结构化结果。"""
         return list_events(session_id)
 
     @staticmethod
     def _match_rule(message: str, llm_intent: str | None) -> IntentRule:
+        """完成模块内部的 match_rule 辅助处理。"""
         if llm_intent:
             for rule in RULES:
                 if rule.intent == llm_intent:
@@ -305,6 +317,7 @@ class VegetationAgent:
         llm_config: Any | None,
         knowledge_hits: list[dict[str, Any]],
     ) -> dict[str, Any]:
+        """完成模块内部的 classify_with_llm 辅助处理。"""
         config = self._normalize_llm_config(llm_config)
         if not config["base_url"] or not config["token"]:
             return {
@@ -350,11 +363,13 @@ class VegetationAgent:
 
     @staticmethod
     def _recommendation_reason(tags: tuple[str, ...], message: str) -> str:
+        """完成模块内部的 recommendation_reason 辅助处理。"""
         matched = [tag for tag in tags if tag in message]
         return f"与需求中的{matched[0]}直接相关" if matched else f"适用于{'、'.join(tags[:2])}"
 
     @staticmethod
     def _thresholds(intent: str) -> list[dict[str, Any]]:
+        """完成模块内部的 thresholds 辅助处理。"""
         if intent == "growth":
             return [
                 {"label": "低活力候选区", "maximum": 0.25},
@@ -370,6 +385,7 @@ class VegetationAgent:
         return []
 
     def recipes(self) -> list[dict[str, Any]]:
+        """执行 recipes 对应的领域操作并返回结构化结果。"""
         return [
             {
                 "id": rule.intent,
@@ -387,6 +403,7 @@ class VegetationAgent:
         llm_config: Any | None = None,
         session_id: str | None = None,
     ) -> dict[str, Any]:
+        """执行 interpret_results 对应的领域操作并返回结构化结果。"""
         base = interpret_products(products, user_goal)
         config = self._normalize_llm_config(llm_config)
         if not config["base_url"] or not config["token"]:
@@ -447,6 +464,7 @@ class VegetationAgent:
 
     @staticmethod
     async def _invoke_langchain(config: dict[str, Any], messages: list[tuple[str, str]]) -> str:
+        """完成模块内部的 invoke_langchain 辅助处理。"""
         if config["provider"] == "anthropic":
             from langchain_anthropic import ChatAnthropic
 
@@ -475,6 +493,7 @@ class VegetationAgent:
 
     @staticmethod
     def _normalize_llm_config(llm_config: Any | None) -> dict[str, Any]:
+        """完成模块内部的 normalize_llm_config 辅助处理。"""
         if llm_config is None:
             return {
                 "provider": "openai-compatible",

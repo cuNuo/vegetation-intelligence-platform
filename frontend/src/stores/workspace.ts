@@ -1,5 +1,9 @@
 // frontend/src/stores/workspace.ts
-// 文件说明：工作台资产、波段映射、任务、结果和界面状态的 Pinia 单一数据源。
+// 文件说明：工作台 Pinia 单一状态源。
+// 主要职责：管理资产、波段映射、指数、任务、结果和活动面板。
+// 对外入口：useWorkspaceStore。
+// 依赖边界：不直接操作 DOM 或 MapLibre 实例。
+
 import { computed, reactive, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import type {
@@ -24,6 +28,7 @@ const DEFAULT_BAND_MAPPING: Record<string, number> = {
   swir2: 0,
 }
 
+/** 按波长、描述和波段数推断逻辑波段映射。 */
 function inferBandMapping(asset: UploadedAsset | null): Record<string, number> {
   if (!asset) return { ...DEFAULT_BAND_MAPPING }
   const count = asset.metadata.count
@@ -72,6 +77,7 @@ function inferBandMapping(asset: UploadedAsset | null): Record<string, number> {
   return mapping
 }
 
+/** 依据波长最近邻匹配标准遥感逻辑波段。 */
 function inferBandMappingByWavelength(asset: UploadedAsset): Partial<Record<string, number>> {
   const bands = asset.metadata.bandMetadata ?? []
   const pick = (min: number, max: number) => {
@@ -153,40 +159,49 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   })
 
+  /** 处理 setIndices 对应的组件交互或数据转换逻辑。 */
   function setIndices(value: IndexMetadata[]) {
     indices.value = value
   }
 
+  /** 处理 setJobs 对应的组件交互或数据转换逻辑。 */
   function setJobs(value: JobRecord[]) {
     jobs.value = value
   }
 
+  /** 处理 setActivePlan 对应的组件交互或数据转换逻辑。 */
   function setActivePlan(value: AgentPlan | null) {
     activePlan.value = value
   }
 
+  /** 处理 setActiveResult 对应的组件交互或数据转换逻辑。 */
   function setActiveResult(value: RasterResult | null, productIndex = 0) {
     activeResult.value = value
     activeProductIndex.value = Math.min(Math.max(productIndex, 0), Math.max((value?.products.length ?? 1) - 1, 0))
   }
 
+  /** 处理 setActiveProduct 对应的组件交互或数据转换逻辑。 */
   function setActiveProduct(value: Product | null) {
     setActiveResult(value ? { actualEngine: '', durationSeconds: 0, fallbackReasons: [], products: [value] } : null)
   }
 
+  /** 处理 selectActiveProduct 对应的组件交互或数据转换逻辑。 */
   function selectActiveProduct(index: number) {
     if (!activeResult.value?.products.length) return
     activeProductIndex.value = Math.min(Math.max(index, 0), activeResult.value.products.length - 1)
   }
 
+  /** 处理 setCapabilities 对应的组件交互或数据转换逻辑。 */
   function setCapabilities(value: SystemCapabilities | null) {
     capabilities.value = value
   }
 
+  /** 处理 setBackendOnline 对应的组件交互或数据转换逻辑。 */
   function setBackendOnline(value: boolean) {
     isBackendOnline.value = value
   }
 
+  /** 处理 addUploadedAssets 对应的组件交互或数据转换逻辑。 */
   function addUploadedAssets(value: UploadedAsset[]) {
     for (const item of value) {
       const existingIndex = asset.queue.findIndex((assetItem) => assetItem.localPath === item.localPath)
@@ -203,12 +218,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  /** 处理 selectAsset 对应的组件交互或数据转换逻辑。 */
   function selectAsset(value: UploadedAsset) {
     asset.selected = value
     asset.localPath = value.localPath
     refreshAssetBands(value)
   }
 
+  /** 处理 refreshAssetBands 对应的组件交互或数据转换逻辑。 */
   function refreshAssetBands(value: UploadedAsset | null) {
     const mapping = inferBandMapping(value)
     for (const band of BAND_ORDER) {
@@ -217,11 +234,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     asset.availableBands = BAND_ORDER.filter((band) => asset.bandMapping[band] > 0)
   }
 
+  /** 处理 setBandMapping 对应的组件交互或数据转换逻辑。 */
   function setBandMapping(logicalBand: string, sourceBand: number) {
     asset.bandMapping[logicalBand] = sourceBand
     asset.availableBands = BAND_ORDER.filter((band) => asset.bandMapping[band] > 0)
   }
 
+  /** 处理 togglePanel 对应的组件交互或数据转换逻辑。 */
   function togglePanel(panel: 'agent' | 'telemetry' | 'catalog') {
     if (panel === 'agent') ui.isAgentVisible = !ui.isAgentVisible
     if (panel === 'telemetry') ui.isTelemetryVisible = !ui.isTelemetryVisible

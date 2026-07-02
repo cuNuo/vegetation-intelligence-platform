@@ -1,5 +1,9 @@
 <!-- frontend/src/components/MapWorkspace.vue -->
-<!-- 文件说明：MapLibre 遥感工作区、TIF 瓦片叠加、占位预览和视角控制。 -->
+<!-- 文件说明：MapLibre 遥感地图工作区。 -->
+<!-- 主要职责：管理底图、源影像、结果瓦片、范围定位、图层顺序和对比模式。 -->
+<!-- 对外约定：asset/product props 与 locate 等事件。 -->
+<!-- 依赖边界：地图命令仅在 style ready 后执行。 -->
+
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, shallowRef, useTemplateRef, watch } from 'vue'
 import maplibregl, { type Map } from 'maplibre-gl'
@@ -87,6 +91,7 @@ const allBasemapLayers = Object.values(basemaps).flatMap((item) =>
   item.layers.map((layer) => layer.id),
 )
 
+/** 把对象键或文件路径转换为浏览器可访问的工件地址。 */
 function artifactUrl(objectKey?: string | null, filePath?: string | null) {
   const key = objectKey?.replaceAll('\\', '/').replace(/^\/+/, '')
   if (key) return `/artifacts/${key}`
@@ -97,11 +102,13 @@ function artifactUrl(objectKey?: string | null, filePath?: string | null) {
   return position >= 0 ? `/artifacts/${normalized.slice(position + marker.length)}` : null
 }
 
+/** 构造后端动态 GeoTIFF 瓦片模板 URL。 */
 function tileUrl(objectKey?: string | null) {
   const key = objectKey?.replaceAll('\\', '/').replace(/^\/+/, '')
   return key ? `/api/tiles/{z}/{x}/{y}.png?key=${encodeURIComponent(key)}` : null
 }
 
+/** 校验地理范围并转换为 MapLibre 边界对象。 */
 function lngLatBounds(bounds?: [number, number, number, number] | null) {
   if (!bounds || bounds.length !== 4) return null
   const [west, south, east, north] = bounds
@@ -166,17 +173,20 @@ const resultLegend = computed(() => {
   }
 })
 
+/** 处理 formatLegendValue 对应的组件交互或数据转换逻辑。 */
 function formatLegendValue(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'NA'
   return Math.abs(value) >= 10 ? value.toFixed(1) : value.toFixed(2)
 }
 
+/** 处理 setLayerVisibility 对应的组件交互或数据转换逻辑。 */
 function setLayerVisibility(layerId: string, visible: boolean) {
   const instance = map.value
   if (!instance?.getLayer(layerId)) return
   instance.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none')
 }
 
+/** 处理 firstAnalysisLayerId 对应的组件交互或数据转换逻辑。 */
 function firstAnalysisLayerId() {
   const instance = map.value
   if (!instance) return undefined
@@ -190,6 +200,7 @@ function firstAnalysisLayerId() {
   ].find((layerId) => instance.getLayer(layerId))
 }
 
+/** 按需创建天地图或兜底底图图层。 */
 function ensureBasemapLayers(key: BasemapKey) {
   const instance = mapWhenStyleReady(() => ensureBasemapLayers(key))
   if (!instance) return
@@ -216,6 +227,7 @@ function ensureBasemapLayers(key: BasemapKey) {
   }
 }
 
+/** 保证任一时刻只有当前底图可见。 */
 function syncBasemapVisibility() {
   ensureBasemapLayers(activeBasemap.value)
   for (const layerId of allBasemapLayers) {
@@ -224,18 +236,22 @@ function syncBasemapVisibility() {
   }
 }
 
+/** 处理 shouldShowSourcePreview 对应的组件交互或数据转换逻辑。 */
 function shouldShowSourcePreview() {
   return layerState.sourcePreview && compareMode.value !== 'after'
 }
 
+/** 处理 shouldShowFootprint 对应的组件交互或数据转换逻辑。 */
 function shouldShowFootprint() {
   return layerState.footprint && compareMode.value !== 'after'
 }
 
+/** 处理 shouldShowResult 对应的组件交互或数据转换逻辑。 */
 function shouldShowResult() {
   return layerState.result && compareMode.value !== 'before'
 }
 
+/** 在 MapLibre 样式完成后执行图层命令，避免时序异常。 */
 function mapWhenStyleReady(callback: () => void) {
   const instance = map.value
   if (!instance) return null
@@ -246,6 +262,7 @@ function mapWhenStyleReady(callback: () => void) {
   return instance
 }
 
+/** 固定范围、源影像和分析结果的图层叠放顺序。 */
 function orderAnalysisLayers() {
   const instance = map.value
   if (!instance?.isStyleLoaded()) return
@@ -255,6 +272,7 @@ function orderAnalysisLayers() {
   if (instance.getLayer('source-footprint-line')) instance.moveLayer('source-footprint-line')
 }
 
+/** 安全移除指定图层及其数据源。 */
 function removeLayerAndSource(layerId: string, sourceId = layerId) {
   const instance = map.value
   if (!instance) return
@@ -262,10 +280,12 @@ function removeLayerAndSource(layerId: string, sourceId = layerId) {
   if (instance.getSource(sourceId)) instance.removeSource(sourceId)
 }
 
+/** 判断两个经纬度包围盒是否相交。 */
 function boundsIntersect(left: [number, number, number, number], right: [number, number, number, number]) {
   return left[0] <= right[2] && left[2] >= right[0] && left[1] <= right[3] && left[3] >= right[1]
 }
 
+/** 判断影像范围是否已位于当前地图视野。 */
 function isBoundsInViewport(bounds: [number, number, number, number] | null) {
   const instance = map.value
   if (!instance || !bounds) return false
@@ -279,11 +299,13 @@ function isBoundsInViewport(bounds: [number, number, number, number] | null) {
   return boundsIntersect(bounds, visible)
 }
 
+/** 触发 MapLibre 重新评估当前视口的瓦片请求。 */
 function refreshTileDemand() {
   sourceTilesInView.value = Boolean(layerState.sourcePreview && isBoundsInViewport(sourceBounds.value))
   resultTilesInView.value = Boolean(layerState.result && isBoundsInViewport(resultBounds.value))
 }
 
+/** 源影像瓦片可用后切换占位预览，减少空白闪烁。 */
 function promoteSourceTilesIfReady() {
   const instance = map.value
   if (
@@ -296,6 +318,7 @@ function promoteSourceTilesIfReady() {
   syncSourcePaint()
 }
 
+/** 同步源影像透明度和对比模式裁剪参数。 */
 function syncSourcePaint() {
   const instance = map.value
   if (!instance) return
@@ -325,6 +348,7 @@ function syncSourcePaint() {
   }
 }
 
+/** 根据资产状态创建、更新或移除源影像图层。 */
 function syncSourceLayer() {
   const instance = mapWhenStyleReady(syncSourceLayer)
   if (!instance) return
@@ -433,6 +457,7 @@ function syncSourceLayer() {
   orderAnalysisLayers()
 }
 
+/** 根据当前产品创建、更新或移除指数结果图层。 */
 function syncProductLayer() {
   const instance = mapWhenStyleReady(syncProductLayer)
   if (!instance) return
@@ -502,6 +527,7 @@ function syncProductLayer() {
   orderAnalysisLayers()
 }
 
+/** 按影像覆盖范围估算合理最大定位级别。 */
 function adaptiveMaxZoom(bounds: [number, number, number, number]) {
   const [west, south, east, north] = bounds
   const span = Math.max(Math.abs(east - west), Math.abs(north - south))
@@ -512,6 +538,7 @@ function adaptiveMaxZoom(bounds: [number, number, number, number]) {
   return 9
 }
 
+/** 以防抖和原因标记控制地图定位，避免重复飞行动画。 */
 function fitBounds(bounds: [number, number, number, number] | null, reason: 'auto' | 'manual' = 'manual') {
   const instance = map.value
   if (!instance) return
@@ -541,10 +568,12 @@ function fitBounds(bounds: [number, number, number, number] | null, reason: 'aut
   if (reason === 'auto') pendingSourceLocateKey = ''
 }
 
+/** 响应用户定位按钮并强制定位到目标范围。 */
 function locateManually(bounds: [number, number, number, number] | null) {
   fitBounds(bounds, 'manual')
 }
 
+/** 在样式可用时统一同步底图、源影像和结果图层。 */
 function syncMapLayers() {
   refreshTileDemand()
   syncBasemapVisibility()
@@ -552,16 +581,19 @@ function syncMapLayers() {
   syncProductLayer()
 }
 
+/** 只在必要时自动定位新导入影像。 */
 function autoLocate(bounds: [number, number, number, number] | null) {
   if (!bounds) return
   fitBounds(bounds, 'auto')
 }
 
+/** 完成异步图层准备后执行待处理定位。 */
 function locateImportedAssetIfPending() {
   if (!pendingSourceLocateKey) return
   autoLocate(sourceBounds.value)
 }
 
+/** 隐藏分析图层，仅保留底图。 */
 function showOnlyBasemap() {
   layerState.basemap = true
   layerState.sourcePreview = false
@@ -569,6 +601,7 @@ function showOnlyBasemap() {
   layerState.result = false
 }
 
+/** 恢复源影像、范围和结果图层。 */
 function showAnalysisLayers() {
   layerState.sourcePreview = true
   layerState.footprint = true
@@ -576,6 +609,7 @@ function showAnalysisLayers() {
   syncMapLayers()
 }
 
+/** 切换正常、并排或卷帘对比状态。 */
 function setCompareMode(mode: CompareMode) {
   compareMode.value = mode
   syncMapLayers()

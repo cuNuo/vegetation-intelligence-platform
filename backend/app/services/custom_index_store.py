@@ -1,3 +1,9 @@
+# backend/app/services/custom_index_store.py
+# 文件说明：自定义指数 PostgreSQL 持久化。
+# 主要职责：建表、upsert 保存并加载恢复指数定义。
+# 对外入口：save_custom_index、load_custom_indices。
+# 依赖边界：故障状态交由上层决定内存回退。
+
 """PostgreSQL自定义指数存储。"""
 
 from __future__ import annotations
@@ -26,10 +32,12 @@ CREATE TABLE IF NOT EXISTS vegetation_custom_indices (
 
 
 def is_enabled() -> bool:
+    """执行 is_enabled 对应的领域操作并返回结构化结果。"""
     return bool(settings.database_url)
 
 
 def initialize_custom_index_store() -> bool:
+    """执行 initialize_custom_index_store 对应的领域操作并返回结构化结果。"""
     if not settings.database_url:
         return False
     try:
@@ -44,6 +52,7 @@ def initialize_custom_index_store() -> bool:
 
 
 def save_custom_index(spec: dict[str, Any]) -> bool:
+    """执行 save_custom_index 对应的领域操作并返回结构化结果。"""
     if not initialize_custom_index_store():
         return False
     import psycopg
@@ -83,6 +92,7 @@ def save_custom_index(spec: dict[str, Any]) -> bool:
 
 
 def load_custom_indices() -> list[dict[str, Any]]:
+    """执行 load_custom_indices 对应的领域操作并返回结构化结果。"""
     if not initialize_custom_index_store():
         return []
     import psycopg

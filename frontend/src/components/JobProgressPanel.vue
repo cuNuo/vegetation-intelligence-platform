@@ -1,5 +1,9 @@
 <!-- frontend/src/components/JobProgressPanel.vue -->
-<!-- 文件说明：任务管理器列表、进度指标和多指数结果切换入口。 -->
+<!-- 文件说明：异步任务进度与结果面板。 -->
+<!-- 主要职责：展示状态、耗时、吞吐、产品切换、下载和取消入口。 -->
+<!-- 对外约定：jobs/result props 与 select/cancel 事件。 -->
+<!-- 依赖边界：不直接轮询后端。 -->
+
 <script setup lang="ts">
 import type { JobRecord, Product, RasterResult } from '@/types/platform'
 
@@ -16,6 +20,7 @@ const emit = defineEmits<{
   cancelJob: [job: JobRecord]
 }>()
 
+/** 把后端任务状态转换为中文显示文本。 */
 function statusLabel(status: string) {
   return (
     {
@@ -28,6 +33,7 @@ function statusLabel(status: string) {
   )
 }
 
+/** 把秒数格式化为易读时长。 */
 function formatDuration(seconds?: number | null) {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '估算中'
   if (seconds < 1) return '<1s'
@@ -36,12 +42,14 @@ function formatDuration(seconds?: number | null) {
   return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`
 }
 
+/** 处理 elapsedSeconds 对应的组件交互或数据转换逻辑。 */
 function elapsedSeconds(job: JobRecord) {
   const start = new Date(job.started_at ?? job.created_at).getTime()
   const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now()
   return Math.max(0, (end - start) / 1000)
 }
 
+/** 根据已完成比例和耗时估算剩余时间。 */
 function estimatedEta(job: JobRecord) {
   if (job.eta_seconds !== null && job.eta_seconds !== undefined) return job.eta_seconds
   if (!['accepted', 'running'].includes(job.status) || job.progress <= 0) return null
@@ -49,6 +57,7 @@ function estimatedEta(job: JobRecord) {
   return Math.max(0, elapsed * (100 - job.progress) / job.progress)
 }
 
+/** 根据窗口进度估算吞吐率。 */
 function estimatedThroughput(job: JobRecord) {
   if (job.throughput !== null && job.throughput !== undefined) return `${job.throughput.toFixed(2)} 窗口/s`
   const current = job.current ?? 0
@@ -57,16 +66,19 @@ function estimatedThroughput(job: JobRecord) {
   return '待采样'
 }
 
+/** 处理 productCount 对应的组件交互或数据转换逻辑。 */
 function productCount(job: JobRecord) {
   return job.result?.products?.length ?? job.index_count ?? 0
 }
 
+/** 处理 isProductActive 对应的组件交互或数据转换逻辑。 */
 function isProductActive(job: JobRecord, index: number, activeResult: RasterResult | null, activeProductIndex: number) {
   const product = job.result?.products?.[index]
   const activeProduct = activeResult?.products?.[activeProductIndex]
   return Boolean(product && activeProduct && product.path === activeProduct.path)
 }
 
+/** 生成产品文件的下载地址。 */
 function productDownloadUrl(product: Product) {
   const key = product.objectKey?.replaceAll('\\', '/').replace(/^\/+/, '')
   if (key) return `/artifacts/${key}`
@@ -76,6 +88,7 @@ function productDownloadUrl(product: Product) {
   return position >= 0 ? `/artifacts/${normalized.slice(position + marker.length)}` : ''
 }
 
+/** 处理 productDownloadName 对应的组件交互或数据转换逻辑。 */
 function productDownloadName(product: Product) {
   return product.path.split(/[\\/]/).pop() ?? `${product.index.toUpperCase()}.tif`
 }

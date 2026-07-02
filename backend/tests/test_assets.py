@@ -1,5 +1,8 @@
 # backend/tests/test_assets.py
-# 文件说明：上传影像内部金字塔构建、复用与元数据回读测试。
+# 文件说明：影像 overview 与波段元数据测试。
+# 主要职责：构造可重复数据并验证业务边界和回归行为。
+# 对外入口：pytest fixture 与 test_* 用例。
+# 依赖边界：隔离数据库、MinIO 和外部 LLM。
 
 from pathlib import Path
 
@@ -17,6 +20,7 @@ def _write_raster(
     count: int = 1,
     descriptions: tuple[str | None, ...] | None = None,
 ) -> None:
+    """完成模块内部的 write_raster 辅助处理。"""
     profile = {
         "driver": "GTiff",
         "width": width,
@@ -40,6 +44,7 @@ def _write_raster(
 
 
 def test_first_open_builds_and_reuses_internal_overviews(tmp_path: Path) -> None:
+    """验证 first open builds and reuses internal overviews 场景的行为和回归边界。"""
     source = tmp_path / "large.tif"
     _write_raster(source, 1024, 768)
 
@@ -55,6 +60,7 @@ def test_first_open_builds_and_reuses_internal_overviews(tmp_path: Path) -> None
 
 
 def test_small_raster_does_not_create_unnecessary_overviews(tmp_path: Path) -> None:
+    """验证 small raster does not create unnecessary overviews 场景的行为和回归边界。"""
     source = tmp_path / "small.tif"
     _write_raster(source, 256, 256)
 
@@ -64,6 +70,7 @@ def test_small_raster_does_not_create_unnecessary_overviews(tmp_path: Path) -> N
 
 
 def test_sensor_filename_profiles_restore_exported_band_metadata(tmp_path: Path) -> None:
+    """验证 sensor filename profiles restore exported band metadata 场景的行为和回归边界。"""
     expected = {
         "GF01_130200_202301.tif": (
             "GF-1",
@@ -118,6 +125,7 @@ def test_sensor_filename_profiles_restore_exported_band_metadata(tmp_path: Path)
 def test_sensor_profile_requires_expected_band_count_and_preserves_description(
     tmp_path: Path,
 ) -> None:
+    """验证文件名配置需匹配波段数，且不会覆盖影像已有描述。"""
     wrong_count = tmp_path / "LAD08_wrong_count.tif"
     described = tmp_path / "GF01_described.tif"
     _write_raster(wrong_count, 32, 32, count=4)
@@ -139,6 +147,7 @@ def test_sensor_profile_requires_expected_band_count_and_preserves_description(
 
 
 def test_original_filename_hint_restores_profile_after_uuid_storage(tmp_path: Path) -> None:
+    """验证 original filename hint restores profile after uuid storage 场景的行为和回归边界。"""
     stored_path = tmp_path / "a9d4a7a33d3749bdb6ea6e036cde042f.tif"
     _write_raster(stored_path, 32, 32, count=7)
 

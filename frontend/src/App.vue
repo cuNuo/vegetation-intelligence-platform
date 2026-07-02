@@ -1,5 +1,9 @@
 <!-- frontend/src/App.vue -->
-<!-- 文件说明：应用主壳，编排地图、Agent、任务管理器和统计面板联动。 -->
+<!-- 文件说明：遥感工作台主壳组件。 -->
+<!-- 主要职责：编排系统刷新、任务轮询、地图、Agent、资产和统计面板。 -->
+<!-- 对外约定：根组件，无业务 props。 -->
+<!-- 依赖边界：只协调组件，领域状态统一进入 workspace store。 -->
+
 <script setup lang="ts">
 import { defineAsyncComponent, onBeforeUnmount, onMounted, shallowRef } from 'vue'
 import AgentDrawer from '@/components/AgentDrawer.vue'
@@ -24,6 +28,7 @@ const { theme, toggleTheme } = useTheme()
 const opacity = shallowRef(0.78)
 let pollTimer: number | undefined
 
+/** 并行刷新指数目录与系统能力，并更新后端在线状态。 */
 async function refreshSystem() {
   try {
     const [indices, jobs, capabilities] = await Promise.all([
@@ -40,6 +45,7 @@ async function refreshSystem() {
   }
 }
 
+/** 轮询任务列表并自动加载最新成功结果。 */
 async function refreshJobs() {
   try {
     store.setJobs(await api.listJobs())
@@ -49,6 +55,7 @@ async function refreshJobs() {
   }
 }
 
+/** 加载指定任务结果并切换到选中的产品。 */
 async function selectJobResult(job: JobRecord, productIndex = 0) {
   const result = job.result ?? await api.getResults(job.id)
   store.setJobs(store.jobs.map((item) => (item.id === job.id ? { ...item, result } : item)))
@@ -56,11 +63,13 @@ async function selectJobResult(job: JobRecord, productIndex = 0) {
   navigateTo('workspace')
 }
 
+/** 请求取消任务并立即刷新任务列表。 */
 async function cancelJob(job: JobRecord) {
   await api.cancelJob(job.id)
   await refreshJobs()
 }
 
+/** 根据工具栏目标切换相应工作面板。 */
 function navigateTo(target: string) {
   const element = target === 'top' ? document.documentElement : document.getElementById(target)
   element?.scrollIntoView({ behavior: 'smooth', block: 'start' })

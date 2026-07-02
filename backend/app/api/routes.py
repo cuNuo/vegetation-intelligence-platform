@@ -1,5 +1,9 @@
 # backend/app/api/routes.py
-# 文件说明：平台 REST、OGC API - Processes、Agent SSE 和瓦片接口路由。
+# 文件说明：平台 REST、OGC、Agent SSE 与瓦片路由。
+# 主要职责：完成协议转换、输入校验、异常映射和服务编排。
+# 对外入口：router 及 /api、/processes、/jobs 接口。
+# 依赖边界：不实现公式和持久化细节。
+
 """平台REST与OGC API - Processes兼容路由。"""
 
 from __future__ import annotations
@@ -62,6 +66,7 @@ def list_indices(
     category: str | None = Query(default=None),
     band: str | None = Query(default=None),
 ) -> dict[str, Any]:
+    """列出内置和动态指数，并支持分类与波段筛选。"""
     items = list(INDEX_REGISTRY.values())
     if category:
         items = [item for item in items if category in item.categories]
@@ -72,6 +77,7 @@ def list_indices(
 
 @router.get("/api/indices/{index_id}")
 def index_detail(index_id: str) -> dict[str, Any]:
+    """执行 index_detail 对应的领域操作并返回结构化结果。"""
     try:
         return get_index(index_id).public_metadata()
     except ValueError as error:
@@ -80,6 +86,7 @@ def index_detail(index_id: str) -> dict[str, Any]:
 
 @router.get("/processes")
 def list_processes() -> dict[str, Any]:
+    """执行 list_processes 对应的领域操作并返回结构化结果。"""
     return {
         "processes": [
             {
@@ -96,6 +103,7 @@ def list_processes() -> dict[str, Any]:
 
 @router.get("/processes/{process_id}")
 def describe_process(process_id: str) -> dict[str, Any]:
+    """执行 describe_process 对应的领域操作并返回结构化结果。"""
     try:
         item = get_index(process_id)
     except ValueError as error:
@@ -119,6 +127,7 @@ def execute_process(
     request: ExecutionRequest,
     prefer: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
+    """根据 Prefer 头选择同步结果或异步任务响应。"""
     try:
         indices = request.indices
         if process_id != "batch":
@@ -147,11 +156,13 @@ def execute_process(
 
 @router.get("/jobs")
 def list_jobs() -> dict[str, Any]:
+    """执行 list_jobs 对应的领域操作并返回结构化结果。"""
     return {"jobs": job_manager.list()}
 
 
 @router.get("/jobs/{job_id}")
 def get_job(job_id: str) -> dict[str, Any]:
+    """执行 get_job 对应的领域操作并返回结构化结果。"""
     try:
         return job_manager.get(job_id).public()
     except KeyError as error:
@@ -160,6 +171,7 @@ def get_job(job_id: str) -> dict[str, Any]:
 
 @router.get("/jobs/{job_id}/results")
 def get_job_results(job_id: str) -> dict[str, Any]:
+    """执行 get_job_results 对应的领域操作并返回结构化结果。"""
     try:
         record = job_manager.get(job_id)
     except KeyError as error:
@@ -171,6 +183,7 @@ def get_job_results(job_id: str) -> dict[str, Any]:
 
 @router.delete("/jobs/{job_id}", status_code=status.HTTP_202_ACCEPTED)
 def cancel_job(job_id: str) -> dict[str, Any]:
+    """执行 cancel_job 对应的领域操作并返回结构化结果。"""
     try:
         return job_manager.cancel(job_id).public()
     except KeyError as error:
@@ -179,6 +192,7 @@ def cancel_job(job_id: str) -> dict[str, Any]:
 
 @router.post("/api/assets/inspect")
 def inspect_asset(request: RasterInspectRequest) -> dict[str, Any]:
+    """执行 inspect_asset 对应的领域操作并返回结构化结果。"""
     try:
         return inspect_raster(request.path)
     except (FileNotFoundError, OSError) as error:
@@ -188,6 +202,7 @@ def inspect_asset(request: RasterInspectRequest) -> dict[str, Any]:
 
 @router.post("/api/assets/upload", status_code=status.HTTP_201_CREATED)
 async def upload_asset(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
+    """执行 upload_asset 对应的领域操作并返回结构化结果。"""
     try:
         return await save_uploaded_asset(file)
     except (ValueError, FileNotFoundError, OSError) as error:
@@ -195,6 +210,7 @@ async def upload_asset(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
 
 @router.post("/api/assets/upload-url")
 def upload_url(object_key: str = Query(min_length=1)) -> dict[str, str]:
+    """执行 upload_url 对应的领域操作并返回结构化结果。"""
     try:
         return create_upload_url(object_key)
     except Exception as error:  # noqa: BLE001 - 转换外部服务错误
@@ -208,6 +224,7 @@ def geotiff_tile(
     y: int,
     key: Annotated[str, Query(min_length=1)],
 ) -> Response:
+    """执行 geotiff_tile 对应的领域操作并返回结构化结果。"""
     try:
         tile = render_geotiff_tile(key, z, x, y)
     except FileNotFoundError as error:
@@ -219,6 +236,7 @@ def geotiff_tile(
 
 @router.post("/api/agent/plan")
 async def create_agent_plan(request: AgentPlanRequest) -> dict[str, Any]:
+    """执行 create_agent_plan 对应的领域操作并返回结构化结果。"""
     return await vegetation_agent.create_plan(
         request.message,
         request.available_bands,
@@ -234,6 +252,7 @@ async def create_agent_plan(request: AgentPlanRequest) -> dict[str, Any]:
 
 @router.post("/api/agent/plan/stream")
 async def stream_agent_plan(request: AgentPlanRequest) -> StreamingResponse:
+    """通过 SSE 分阶段返回状态、思考摘要和最终计划。"""
     bands_label = " / ".join(request.available_bands) if request.available_bands else "未提供"
     size_label = (
         f"{request.raster_width}×{request.raster_height}"
@@ -243,6 +262,7 @@ async def stream_agent_plan(request: AgentPlanRequest) -> StreamingResponse:
     document_count = len(request.external_documents)
 
     async def events():
+        """执行 events 对应的领域操作并返回结构化结果。"""
         yield _sse(
             "thought",
             {
@@ -350,6 +370,7 @@ async def stream_agent_plan(request: AgentPlanRequest) -> StreamingResponse:
 
 @router.post("/api/agent/chat")
 async def chat_with_agent(request: AgentPlanRequest) -> dict[str, Any]:
+    """执行 chat_with_agent 对应的领域操作并返回结构化结果。"""
     plan = await create_agent_plan(request)
     return {
         "message": f"建议执行“{plan['title']}”。我已生成可编辑方案，确认后才会提交计算。",
@@ -359,6 +380,7 @@ async def chat_with_agent(request: AgentPlanRequest) -> dict[str, Any]:
 
 @router.post("/api/agent/plans/{plan_id}/confirm")
 def confirm_agent_plan(plan_id: str, request: ConfirmPlanRequest) -> dict[str, Any]:
+    """执行 confirm_agent_plan 对应的领域操作并返回结构化结果。"""
     try:
         plan = vegetation_agent.get_plan(plan_id)
         allowed_indices = {
@@ -398,7 +420,9 @@ def confirm_agent_plan(plan_id: str, request: ConfirmPlanRequest) -> dict[str, A
 
 @router.post("/api/agent/plans/{plan_id}/confirm/stream")
 async def stream_confirm_agent_plan(plan_id: str, request: ConfirmPlanRequest) -> StreamingResponse:
+    """通过 SSE 提交已确认计划并推送任务直到终态。"""
     async def events():
+        """执行 events 对应的领域操作并返回结构化结果。"""
         try:
             yield _sse("status", {"message": "正在校验执行单、影像路径和波段映射。"})
             plan = vegetation_agent.get_plan(plan_id)
@@ -461,6 +485,7 @@ async def stream_confirm_agent_plan(plan_id: str, request: ConfirmPlanRequest) -
 
 @router.post("/api/agent/interpret-results")
 async def interpret_agent_results(request: AgentResultInterpretRequest) -> dict[str, Any]:
+    """执行 interpret_agent_results 对应的领域操作并返回结构化结果。"""
     return await vegetation_agent.interpret_results(
         request.products,
         request.user_goal,
@@ -471,11 +496,13 @@ async def interpret_agent_results(request: AgentResultInterpretRequest) -> dict[
 
 @router.get("/api/agent/sessions/{session_id}/events")
 def get_agent_session_events(session_id: str) -> dict[str, Any]:
+    """执行 get_agent_session_events 对应的领域操作并返回结构化结果。"""
     return {"items": vegetation_agent.get_session_events(session_id)}
 
 
 @router.post("/api/agent/knowledge", status_code=status.HTTP_201_CREATED)
 def import_agent_knowledge(request: AgentKnowledgeImportRequest) -> dict[str, Any]:
+    """执行 import_agent_knowledge 对应的领域操作并返回结构化结果。"""
     try:
         document = save_knowledge_document(request.model_dump(by_alias=True))
     except ValueError as error:
@@ -485,6 +512,7 @@ def import_agent_knowledge(request: AgentKnowledgeImportRequest) -> dict[str, An
 
 @router.post("/api/indices/custom", status_code=status.HTTP_201_CREATED)
 def create_custom_index(request: AgentCustomIndexRequest) -> dict[str, Any]:
+    """执行 create_custom_index 对应的领域操作并返回结构化结果。"""
     try:
         return register_custom_index(request.model_dump(by_alias=True))
     except ValueError as error:
@@ -493,11 +521,13 @@ def create_custom_index(request: AgentCustomIndexRequest) -> dict[str, Any]:
 
 @router.get("/api/recipes")
 def list_recipes() -> dict[str, Any]:
+    """执行 list_recipes 对应的领域操作并返回结构化结果。"""
     return {"items": vegetation_agent.recipes() + list(custom_recipes.values())}
 
 
 @router.post("/api/recipes", status_code=status.HTTP_201_CREATED)
 def create_recipe(request: RecipeRequest) -> dict[str, Any]:
+    """执行 create_recipe 对应的领域操作并返回结构化结果。"""
     for index_id in request.indices:
         try:
             get_index(index_id)
@@ -511,6 +541,7 @@ def create_recipe(request: RecipeRequest) -> dict[str, Any]:
 
 @router.post("/api/formulas/validate")
 def validate_formula(request: CustomFormulaRequest) -> dict[str, Any]:
+    """执行 validate_formula 对应的领域操作并返回结构化结果。"""
     try:
         return validate_custom_expression(request.expression, request.allowed_bands)
     except (SyntaxError, ValueError) as error:
@@ -519,6 +550,7 @@ def validate_formula(request: CustomFormulaRequest) -> dict[str, Any]:
 
 @router.post("/api/analysis/change")
 def change_detection(request: ChangeDetectionRequest) -> dict[str, Any]:
+    """执行 change_detection 对应的领域操作并返回结构化结果。"""
     try:
         return detect_change(
             request.before_path,
@@ -533,6 +565,7 @@ def change_detection(request: ChangeDetectionRequest) -> dict[str, Any]:
 
 @router.post("/api/analysis/zonal-statistics")
 def zonal_statistics(request: ZonalStatisticsRequest) -> dict[str, Any]:
+    """执行 zonal_statistics 对应的领域操作并返回结构化结果。"""
     try:
         return calculate_zonal_statistics(request.raster_path, request.geojson)
     except (KeyError, OSError, ValueError) as error:
@@ -541,6 +574,7 @@ def zonal_statistics(request: ZonalStatisticsRequest) -> dict[str, Any]:
 
 @router.get("/api/benchmarks/engines")
 def engine_benchmarks() -> dict[str, Any]:
+    """执行 engine_benchmarks 对应的领域操作并返回结构化结果。"""
     return {
         "thresholds": {
             "numpyMaxPixels": 2_000_000,
@@ -553,6 +587,7 @@ def engine_benchmarks() -> dict[str, Any]:
 
 @router.get("/api/system/capabilities")
 def capabilities() -> dict[str, Any]:
+    """执行 capabilities 对应的领域操作并返回结构化结果。"""
     custom_count = max(len(INDEX_REGISTRY) - CORE_INDEX_COUNT, 0)
     return {
         "cuda": has_cuda(),
@@ -571,6 +606,7 @@ def capabilities() -> dict[str, Any]:
 
 @router.get("/api/system/taskbook-coverage")
 def taskbook_coverage() -> dict[str, Any]:
+    """执行 taskbook_coverage 对应的领域操作并返回结构化结果。"""
     items = [
         _coverage(
             "35种植被指数",
@@ -677,6 +713,7 @@ def taskbook_coverage() -> dict[str, Any]:
 
 
 def _coverage(requirement: str, status: str, location: str, evidence: str) -> dict[str, str]:
+    """完成模块内部的 coverage 辅助处理。"""
     return {
         "requirement": requirement,
         "status": status,
@@ -686,6 +723,7 @@ def _coverage(requirement: str, status: str, location: str, evidence: str) -> di
 
 
 def _to_raster_task(request: ExecutionRequest, indices: list[str]) -> RasterTask:
+    """完成模块内部的 to_raster_task 辅助处理。"""
     source = resolve_source(request.source.object_key, request.source.local_path)
     output_dir = settings.data_dir / "outputs" / uuid.uuid4().hex
     return RasterTask(
@@ -702,6 +740,7 @@ def _to_raster_task(request: ExecutionRequest, indices: list[str]) -> RasterTask
 
 
 def _validate_raster_task(task: RasterTask) -> None:
+    """完成模块内部的 validate_raster_task 辅助处理。"""
     import rasterio
 
     definitions = [get_index(index_id) for index_id in task.indices]
@@ -720,5 +759,6 @@ def _validate_raster_task(task: RasterTask) -> None:
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
+    """完成模块内部的 sse 辅助处理。"""
     payload = json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"

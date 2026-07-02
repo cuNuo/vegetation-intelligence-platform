@@ -1,0 +1,209 @@
+{
+  "id": "2026-07-02-195836",
+  "generated_at": "2026-07-02T11:58:36.9688867Z",
+  "language": "zh",
+  "pages": [
+    {
+      "slug": "1-xiang-mu-gai-shu",
+      "title": "项目概述",
+      "file": "1-xiang-mu-gai-shu.md",
+      "section": "快速上手",
+      "level": "..."
+    },
+    {
+      "slug": "2-ben-di-kai-fa-huan-jing-da-jian-yu-qi-dong",
+      "title": "本地开发环境搭建与启动",
+      "file": "2-ben-di-kai-fa-huan-jing-da-jian-yu-qi-dong.md",
+      "section": "快速上手",
+      "level": "..."
+    },
+    {
+      "slug": "3-docker-compose-rong-qi-hua-bu-shu",
+      "title": "Docker Compose 容器化部署",
+      "file": "3-docker-compose-rong-qi-hua-bu-shu.md",
+      "section": "快速上手",
+      "level": "..."
+    },
+    {
+      "slug": "4-ping-tai-zheng-ti-jia-gou-yu-ji-zhu-zhan",
+      "title": "平台整体架构与技术栈",
+      "file": "4-ping-tai-zheng-ti-jia-gou-yu-ji-zhu-zhan.md",
+      "section": "核心架构",
+      "level": "..."
+    },
+    {
+      "slug": "5-hou-duan-mo-kuai-zhi-ze-yu-mu-lu-zu-zhi",
+      "title": "后端模块职责与目录组织",
+      "file": "5-hou-duan-mo-kuai-zhi-ze-yu-mu-lu-zu-zhi.md",
+      "section": "核心架构",
+      "level": "..."
+    },
+    {
+      "slug": "6-qian-duan-zu-jian-yu-zhuang-tai-guan-li",
+      "title": "前端组件与状态管理",
+      "file": "6-qian-duan-zu-jian-yu-zhuang-tai-guan-li.md",
+      "section": "核心架构",
+      "level": "..."
+    },
+    {
+      "slug": "7-tong-gong-shi-zhu-ce-biao-yu-zhi-shu-ding-yi",
+      "title": "统一公式注册表与指数定义",
+      "file": "7-tong-gong-shi-zhu-ce-biao-yu-zhi-shu-ding-yi.md",
+      "section": "核心架构",
+      "group": "计算引擎体系",
+      "level": "..."
+    },
+    {
+      "slug": "8-duo-yin-qing-xuan-ze-yu-zi-dong-hui-tui-ce-lue",
+      "title": "多引擎选择与自动回退策略",
+      "file": "8-duo-yin-qing-xuan-ze-yu-zi-dong-hui-tui-ce-lue.md",
+      "section": "核心架构",
+      "group": "计算引擎体系",
+      "level": "..."
+    },
+    {
+      "slug": "9-rasterio-fen-kuai-du-xie-yu-nei-cun-an-quan",
+      "title": "Rasterio 分块读写与内存安全",
+      "file": "9-rasterio-fen-kuai-du-xie-yu-nei-cun-an-quan.md",
+      "section": "核心架构",
+      "group": "计算引擎体系",
+      "level": "..."
+    },
+    {
+      "slug": "10-zhi-bei-fen-xi-agent-she-ji-zhe-xue-yu-an-quan-bian-jie",
+      "title": "植被分析 Agent 设计哲学与安全边界",
+      "file": "10-zhi-bei-fen-xi-agent-she-ji-zhe-xue-yu-an-quan-bian-jie.md",
+      "section": "智能体系统",
+      "level": "..."
+    },
+    {
+      "slug": "11-yi-tu-shi-bie-fang-an-sheng-cheng-yu-yong-hu-que-ren-liu-cheng",
+      "title": "意图识别、方案生成与用户确认流程",
+      "file": "11-yi-tu-shi-bie-fang-an-sheng-cheng-yu-yong-hu-que-ren-liu-cheng.md",
+      "section": "智能体系统",
+      "level": "..."
+    },
+    {
+      "slug": "12-sse-liu-shi-tong-xin-yu-qian-duan-dui-hua-jie-mian",
+      "title": "SSE 流式通信与前端对话界面",
+      "file": "12-sse-liu-shi-tong-xin-yu-qian-duan-dui-hua-jie-mian.md",
+      "section": "智能体系统",
+      "level": "..."
+    },
+    {
+      "slug": "13-zhi-shu-zhi-shi-jian-suo-rag-yu-wang-luo-sou-suo-ji-cheng",
+      "title": "指数知识检索（RAG）与网络搜索集成",
+      "file": "13-zhi-shu-zhi-shi-jian-suo-rag-yu-wang-luo-sou-suo-ji-cheng.md",
+      "section": "智能体系统",
+      "group": "知识与持久化",
+      "level": "..."
+    },
+    {
+      "slug": "14-zi-ding-yi-zhi-shu-zhu-ce-yu-postgresql-chi-jiu-hua",
+      "title": "自定义指数注册与 PostgreSQL 持久化",
+      "file": "14-zi-ding-yi-zhi-shu-zhu-ce-yu-postgresql-chi-jiu-hua.md",
+      "section": "智能体系统",
+      "group": "知识与持久化",
+      "level": "..."
+    },
+    {
+      "slug": "15-agent-hui-hua-shi-jian-cun-chu-yu-jie-guo-jie-du",
+      "title": "Agent 会话事件存储与结果解读",
+      "file": "15-agent-hui-hua-shi-jian-cun-chu-yu-jie-guo-jie-du.md",
+      "section": "智能体系统",
+      "group": "知识与持久化",
+      "level": "..."
+    },
+    {
+      "slug": "16-rest-jie-kou-yu-ogc-api-processes-gui-fan-dui-qi",
+      "title": "REST 接口与 OGC API - Processes 规范对齐",
+      "file": "16-rest-jie-kou-yu-ogc-api-processes-gui-fan-dui-qi.md",
+      "section": "OGC 兼容 API",
+      "level": "..."
+    },
+    {
+      "slug": "17-tong-bu-zhi-xing-yu-celery-yi-bu-ren-wu-guan-dao",
+      "title": "同步执行与 Celery 异步任务管道",
+      "file": "17-tong-bu-zhi-xing-yu-celery-yi-bu-ren-wu-guan-dao.md",
+      "section": "OGC 兼容 API",
+      "level": "..."
+    },
+    {
+      "slug": "18-ren-wu-you-xian-ji-jin-du-cha-xun-yu-qu-xiao",
+      "title": "任务优先级、进度查询与取消",
+      "file": "18-ren-wu-you-xian-ji-jin-du-cha-xun-yu-qu-xiao.md",
+      "section": "OGC 兼容 API",
+      "level": "..."
+    },
+    {
+      "slug": "19-maplibre-di-tu-gong-zuo-qu-yu-tian-di-tu-ji-cheng",
+      "title": "MapLibre 地图工作区与天地图集成",
+      "file": "19-maplibre-di-tu-gong-zuo-qu-yu-tian-di-tu-ji-cheng.md",
+      "section": "前端工作台",
+      "level": "..."
+    },
+    {
+      "slug": "20-geotiff-dong-tai-wa-pian-die-jia-yu-tu-ceng-kong-zhi",
+      "title": "GeoTIFF 动态瓦片叠加与图层控制",
+      "file": "20-geotiff-dong-tai-wa-pian-die-jia-yu-tu-ceng-kong-zhi.md",
+      "section": "前端工作台",
+      "level": "..."
+    },
+    {
+      "slug": "21-yao-gan-ying-xiang-shang-chuan-bo-duan-ying-she-yu-yuan-shu-ju-tui-duan",
+      "title": "遥感影像上传、波段映射与元数据推断",
+      "file": "21-yao-gan-ying-xiang-shang-chuan-bo-duan-ying-she-yu-yuan-shu-ju-tui-duan.md",
+      "section": "前端工作台",
+      "level": "..."
+    },
+    {
+      "slug": "22-tong-ji-tu-biao-yu-duo-zhi-shu-jie-guo-qie-huan",
+      "title": "统计图表与多指数结果切换",
+      "file": "22-tong-ji-tu-biao-yu-duo-zhi-shu-jie-guo-qie-huan.md",
+      "section": "前端工作台",
+      "level": "..."
+    },
+    {
+      "slug": "23-docker-compose-fu-wu-bian-pai-quan-jing",
+      "title": "Docker Compose 服务编排全景",
+      "file": "23-docker-compose-fu-wu-bian-pai-quan-jing.md",
+      "section": "基础设施与运维",
+      "level": "..."
+    },
+    {
+      "slug": "24-traefik-fan-xiang-dai-li-yu-nacos-fu-wu-fa-xian-qiao-jie",
+      "title": "Traefik 反向代理与 Nacos 服务发现桥接",
+      "file": "24-traefik-fan-xiang-dai-li-yu-nacos-fu-wu-fa-xian-qiao-jie.md",
+      "section": "基础设施与运维",
+      "level": "..."
+    },
+    {
+      "slug": "25-minio-dui-xiang-cun-chu-yu-redis-xiao-xi-dui-lie",
+      "title": "MinIO 对象存储与 Redis 消息队列",
+      "file": "25-minio-dui-xiang-cun-chu-yu-redis-xiao-xi-dui-lie.md",
+      "section": "基础设施与运维",
+      "level": "..."
+    },
+    {
+      "slug": "26-hou-duan-ce-shi-ce-lue-yu-pytest-fu-gai-fan-wei",
+      "title": "后端测试策略与 pytest 覆盖范围",
+      "file": "26-hou-duan-ce-shi-ce-lue-yu-pytest-fu-gai-fan-wei.md",
+      "section": "质量保障",
+      "level": "..."
+    },
+    {
+      "slug": "27-qian-duan-lei-xing-jian-cha-yu-gou-jian-yan-zheng",
+      "title": "前端类型检查与构建验证",
+      "file": "27-qian-duan-lei-xing-jian-cha-yu-gou-jian-yan-zheng.md",
+      "section": "质量保障",
+      "level": "..."
+    },
+    {
+      "slug": "28-ji-zhun-ce-shi-yu-xing-neng-ping-gu",
+      "title": "基准测试与性能评估",
+      "file": "28-ji-zhun-ce-shi-yu-xing-neng-ping-gu.md",
+      "section": "质量保障",
+      "level": "..."
+    }
+  ]
+}

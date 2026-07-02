@@ -1,4 +1,11 @@
+# infra/pygeoapi/config.yml
+# 文件说明：独立 pygeoapi 服务配置。
+# 主要职责：声明服务元数据、HTTP 监听参数，并把 spectral-index Process 绑定到 Python 处理器。
+# 对外入口：OGC API - Processes 的 /processes/spectral-index 与 execution 端点。
+# 维护约束：处理器名称必须与 backend/app/pygeoapi_processor.py 的可导入类路径一致。
+
 server:
+  # 容器内监听 5000；对外地址可由 Compose 或网关覆盖。
   bind:
     host: 0.0.0.0
     port: 5000
@@ -37,6 +44,8 @@ metadata:
     role: developer
 
 resources:
+  # 单个动态处理器通过请求中的 index 字段选择任意已注册指数，
+  # 因此无需为 35 个公式分别维护 35 份 YAML 和 Python 类。
   spectral-index:
     type: process
     processor:

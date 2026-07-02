@@ -1,3 +1,9 @@
+# backend/app/celery_app.py
+# 文件说明：Celery 应用与优先队列配置。
+# 主要职责：配置 Redis broker/backend、序列化和五级队列。
+# 对外入口：celery_app。
+# 依赖边界：计算统一复用 RasterPipeline。
+
 """Celery部署入口与五级优先队列。"""
 
 from celery import Celery

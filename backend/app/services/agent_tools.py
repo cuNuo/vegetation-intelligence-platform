@@ -1,5 +1,9 @@
 # backend/app/services/agent_tools.py
-# 文件说明：指数知识检索、运行期指数注册与统计结果解释工具。
+# 文件说明：Agent 指数知识、动态注册和结果解释工具。
+# 主要职责：检索知识、验证指数、构造追踪并解释统计。
+# 对外入口：search_index_knowledge、register_custom_index、interpret_products。
+# 依赖边界：动态表达式必须白名单验证。
+
 """智能体工具：指数检索、运行期指数注册与统计解释。"""
 
 from __future__ import annotations
@@ -80,12 +84,14 @@ COMMON_AGRONOMY_KNOWLEDGE = (
 
 @dataclass(frozen=True, slots=True)
 class KnowledgeHit:
+    """封装 KnowledgeHit 相关状态、约束和可复用行为。"""
     title: str
     content: str
     source: str
     score: float
 
     def public(self) -> dict[str, Any]:
+        """执行 public 对应的领域操作并返回结构化结果。"""
         return {
             "title": self.title,
             "content": self.content,
@@ -228,6 +234,7 @@ def register_custom_index(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_persisted_custom_indices() -> int:
+    """执行 load_persisted_custom_indices 对应的领域操作并返回结构化结果。"""
     loaded = 0
     for spec in load_custom_indices():
         try:
@@ -242,6 +249,7 @@ def _register_custom_index_in_memory(
     spec: dict[str, Any],
     allow_replace: bool,
 ) -> dict[str, Any]:
+    """完成模块内部的 register_custom_index_in_memory 辅助处理。"""
     index_id = _normalize_index_id(str(spec.get("id") or ""))
     if not index_id:
         raise ValueError("自定义指数必须提供id")
@@ -318,10 +326,12 @@ def interpret_products(products: list[dict[str, Any]], user_goal: str = "") -> d
 
 
 def _build_expression(expression: str) -> Callable[[Any, dict[str, Any], dict[str, float]], Any]:
+    """完成模块内部的 build_expression 辅助处理。"""
     tree = ast.parse(expression, mode="eval")
     code = compile(tree, "<runtime-index>", "eval")
 
     def calculate(xp: Any, bands: dict[str, Any], _parameters: dict[str, float]) -> Any:
+        """校验所需波段、合并参数并调用统一公式表达式。"""
         functions = {
             "abs": xp.abs,
             "sqrt": xp.sqrt,
@@ -335,6 +345,7 @@ def _build_expression(expression: str) -> Callable[[Any, dict[str, Any], dict[st
 
 
 def _probe_expression(expression: str, required_bands: tuple[str, ...]) -> None:
+    """完成模块内部的 probe_expression 辅助处理。"""
     arrays = {band: np.array([[0.2, 0.6]], dtype=np.float32) for band in required_bands}
     result = _build_expression(expression)(np, arrays, {})
     array = np.asarray(result, dtype=np.float32)
@@ -343,6 +354,7 @@ def _probe_expression(expression: str, required_bands: tuple[str, ...]) -> None:
 
 
 def _expected_range(value: Any) -> tuple[float, float] | None:
+    """完成模块内部的 expected_range 辅助处理。"""
     if not value:
         return None
     if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -351,11 +363,13 @@ def _expected_range(value: Any) -> tuple[float, float] | None:
 
 
 def _normalize_index_id(value: str) -> str:
+    """完成模块内部的 normalize_index_id 辅助处理。"""
     normalized = re.sub(r"[^a-z0-9_]+", "_", value.strip().lower()).strip("_")
     return normalized[:40]
 
 
 def _tokenize(value: str) -> set[str]:
+    """完成模块内部的 tokenize 辅助处理。"""
     words = set(re.findall(r"[a-zA-Z0-9_]+", value.lower()))
     chinese_terms = {
         term
@@ -391,6 +405,7 @@ def _tokenize(value: str) -> set[str]:
 
 
 def _score(terms: set[str], content: str) -> float:
+    """完成模块内部的 score 辅助处理。"""
     if not terms:
         return 0.0
     lowered = content.lower()
@@ -399,11 +414,13 @@ def _score(terms: set[str], content: str) -> float:
 
 
 def _clean_html(value: str) -> str:
+    """完成模块内部的 clean_html 辅助处理。"""
     text = re.sub(r"<.*?>", "", value)
     return html.unescape(re.sub(r"\s+", " ", text)).strip()
 
 
 def _interpret_index(index_id: str, mean: float, deviation: float | None) -> tuple[str, str]:
+    """完成模块内部的 interpret_index 辅助处理。"""
     spread = (
         ""
         if deviation is None
@@ -422,6 +439,7 @@ def _interpret_index(index_id: str, mean: float, deviation: float | None) -> tup
 
 
 def _summary_from_insights(insights: list[dict[str, str]]) -> str:
+    """完成模块内部的 summary_from_insights 辅助处理。"""
     if any(item["severity"] == "danger" for item in insights):
         return "统计结果提示存在需要优先核查的低值或异常区域。"
     if any(item["severity"] == "warning" for item in insights):

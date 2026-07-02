@@ -1,3 +1,9 @@
+# backend/app/services/agent_session_store.py
+# 文件说明：Agent 会话与事件存储。
+# 主要职责：创建会话、追加结构化事件并按序回放。
+# 对外入口：create_session、append_event、list_events。
+# 依赖边界：只保存会话事实，不负责推理。
+
 """Agent会话事件存储。"""
 
 from __future__ import annotations
@@ -35,10 +41,12 @@ CREATE TABLE IF NOT EXISTS vegetation_agent_events (
 
 
 def is_enabled() -> bool:
+    """执行 is_enabled 对应的领域操作并返回结构化结果。"""
     return bool(settings.database_url)
 
 
 def initialize_agent_session_store() -> bool:
+    """执行 initialize_agent_session_store 对应的领域操作并返回结构化结果。"""
     if not settings.database_url:
         return False
     try:
@@ -54,6 +62,7 @@ def initialize_agent_session_store() -> bool:
 
 
 def create_session(title: str) -> str:
+    """执行 create_session 对应的领域操作并返回结构化结果。"""
     session_id = str(uuid.uuid4())
     _MEMORY_SESSIONS[session_id] = {"id": session_id, "title": title[:160]}
     _MEMORY_EVENTS.setdefault(session_id, [])
@@ -79,6 +88,7 @@ def append_event(
     content: str,
     payload: dict[str, Any] | None = None,
 ) -> bool:
+    """执行 append_event 对应的领域操作并返回结构化结果。"""
     if not initialize_agent_session_store():
         _MEMORY_EVENTS.setdefault(session_id, []).append(
             {
@@ -119,6 +129,7 @@ def append_event(
 
 
 def list_events(session_id: str) -> list[dict[str, Any]]:
+    """执行 list_events 对应的领域操作并返回结构化结果。"""
     if not initialize_agent_session_store():
         return list(_MEMORY_EVENTS.get(session_id, []))
     import psycopg

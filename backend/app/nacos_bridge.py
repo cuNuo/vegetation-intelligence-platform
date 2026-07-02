@@ -1,3 +1,9 @@
+# backend/app/nacos_bridge.py
+# 文件说明：Nacos 到 Traefik 的动态路由同步桥。
+# 主要职责：查询健康实例并原子生成 File Provider 配置。
+# 对外入口：fetch_instances、render_configuration、sync_once。
+# 依赖边界：只同步服务发现信息。
+
 """将Nacos健康实例同步为Traefik File Provider配置。"""
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ SERVICES = {
 
 
 def fetch_instances(service_name: str) -> list[str]:
+    """执行 fetch_instances 对应的领域操作并返回结构化结果。"""
     query = urlencode({"serviceName": service_name, "healthyOnly": "true"})
     with urlopen(f"{NACOS_URL}/nacos/v1/ns/instance/list?{query}", timeout=5) as response:
         payload = json.load(response)
@@ -30,6 +37,7 @@ def fetch_instances(service_name: str) -> list[str]:
 
 
 def render_configuration(instances: dict[str, list[str]]) -> str:
+    """执行 render_configuration 对应的领域操作并返回结构化结果。"""
     lines = ["http:", "  routers:"]
     for service_name, prefix in SERVICES.items():
         router_name = service_name.replace("vegetation-", "")
@@ -62,6 +70,7 @@ def render_configuration(instances: dict[str, list[str]]) -> str:
 
 
 def sync_once() -> None:
+    """执行 sync_once 对应的领域操作并返回结构化结果。"""
     instances: dict[str, list[str]] = {}
     for service_name in SERVICES:
         try:

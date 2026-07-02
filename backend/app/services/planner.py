@@ -1,3 +1,9 @@
+# backend/app/services/planner.py
+# 文件说明：计算引擎自动选择器。
+# 主要职责：按像元数、指数数、CUDA 和用户偏好选择引擎。
+# 对外入口：ExecutionPlanner、ExecutionDecision、has_cuda。
+# 依赖边界：只做可解释决策，不执行计算。
+
 """依据数据规模和硬件能力选择计算引擎。"""
 
 from __future__ import annotations
@@ -10,6 +16,7 @@ EngineName = Literal["auto", "numpy", "joblib", "torch"]
 
 @dataclass(slots=True)
 class ExecutionDecision:
+    """封装 ExecutionDecision 相关状态、约束和可复用行为。"""
     requested: EngineName
     selected: Literal["numpy", "joblib", "torch"]
     reason: str
@@ -17,6 +24,7 @@ class ExecutionDecision:
 
 
 def has_cuda() -> bool:
+    """执行 has_cuda 对应的领域操作并返回结构化结果。"""
     try:
         import torch
 
@@ -37,6 +45,7 @@ class ExecutionPlanner:
         requested: EngineName = "auto",
         is_synchronous: bool = False,
     ) -> ExecutionDecision:
+        """按照显式请求或规模阈值选择实际计算引擎。"""
         pixels = width * height
         estimated_memory_mb = pixels * (band_count + index_count) * 4 / 1024**2
 

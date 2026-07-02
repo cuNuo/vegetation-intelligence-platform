@@ -1,3 +1,9 @@
+<!-- frontend/src/components/AppStatusBar.vue -->
+<!-- 文件说明：底部系统状态栏。 -->
+<!-- 主要职责：展示后端、CUDA、引擎、指数数量、任务和当前产品。 -->
+<!-- 对外约定：状态 props。 -->
+<!-- 依赖边界：只做展示和本地时间刷新。 -->
+
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue'
 import type { Product, SystemCapabilities } from '@/types/platform'

@@ -1,5 +1,9 @@
 # backend/tests/test_agent.py
-# 文件说明：Agent 方案、RAG、会话、自定义指数和知识隔离回归测试。
+# 文件说明：Agent 推荐、确认、RAG 和知识隔离测试。
+# 主要职责：构造可重复数据并验证业务边界和回归行为。
+# 对外入口：pytest fixture 与 test_* 用例。
+# 依赖边界：隔离数据库、MinIO 和外部 LLM。
+
 import asyncio
 
 import pytest
@@ -13,6 +17,7 @@ from app.services.agent_knowledge_store import (
 
 
 def test_agent_recommends_growth_workflow() -> None:
+    """验证 agent recommends growth workflow 场景的行为和回归边界。"""
     plan = asyncio.run(
         vegetation_agent.create_plan(
             "我想看这片农田哪些区域长势不好",
@@ -30,6 +35,7 @@ def test_agent_recommends_growth_workflow() -> None:
 
 
 def test_agent_blocks_indices_with_missing_bands() -> None:
+    """验证 agent blocks indices with missing bands 场景的行为和回归边界。"""
     plan = asyncio.run(
         vegetation_agent.create_plan(
             "分析叶绿素和红边变化",
@@ -41,6 +47,7 @@ def test_agent_blocks_indices_with_missing_bands() -> None:
 
 
 def test_agent_requires_confirmation_before_execution() -> None:
+    """验证 agent requires confirmation before execution 场景的行为和回归边界。"""
     plan = asyncio.run(
         vegetation_agent.create_plan("分析稀疏植被", ["blue", "red", "nir", "swir1"])
     )
@@ -49,6 +56,7 @@ def test_agent_requires_confirmation_before_execution() -> None:
 
 
 def test_agent_interpretation_appends_session_event() -> None:
+    """验证 agent interpretation appends session event 场景的行为和回归边界。"""
     plan = asyncio.run(
         vegetation_agent.create_plan(
             "我想看这片农田哪些区域长势不好",
@@ -79,6 +87,7 @@ def test_agent_interpretation_appends_session_event() -> None:
 
 
 def test_agent_exposes_trace_and_rag_hits() -> None:
+    """验证 agent exposes trace and rag hits 场景的行为和回归边界。"""
     plan = asyncio.run(
         vegetation_agent.create_plan(
             "干旱水分胁迫应该看哪些指数",
@@ -92,6 +101,7 @@ def test_agent_exposes_trace_and_rag_hits() -> None:
 
 
 def test_agent_rag_uses_imported_knowledge_document() -> None:
+    """验证 agent rag uses imported knowledge document 场景的行为和回归边界。"""
     delete_knowledge_documents_by_source("pytest-knowledge")
     try:
         save_knowledge_document(
@@ -114,6 +124,7 @@ def test_agent_rag_uses_imported_knowledge_document() -> None:
 
 
 def test_agent_rag_does_not_inject_unmentioned_specific_disease() -> None:
+    """验证 agent rag does not inject unmentioned specific disease 场景的行为和回归边界。"""
     delete_knowledge_documents_by_source("pytest-knowledge")
     try:
         save_knowledge_document(
@@ -137,6 +148,7 @@ def test_agent_rag_does_not_inject_unmentioned_specific_disease() -> None:
 
 
 def test_agent_can_register_runtime_custom_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 agent can register runtime custom index 场景的行为和回归边界。"""
     monkeypatch.setattr("app.services.agent_tools.save_custom_index", lambda _spec: False)
     try:
         plan = asyncio.run(

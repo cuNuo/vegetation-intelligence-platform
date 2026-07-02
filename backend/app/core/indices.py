@@ -1,3 +1,9 @@
+# backend/app/core/indices.py
+# 文件说明：植被指数统一注册表与公式定义。
+# 主要职责：集中维护 35 个指数的公式、波段、参数、用途和限制。
+# 对外入口：IndexDefinition、INDEX_REGISTRY、get_index。
+# 依赖边界：公式层零框架依赖，仅依赖数组后端 xp。
+
 """植被指数注册表。
 
 公式函数只依赖传入的数组后端 ``xp``，因此同一份定义可以由 NumPy 或
@@ -22,6 +28,7 @@ def safe_divide(xp: Any, numerator: Array, denominator: Array, epsilon: float = 
 
 @dataclass(frozen=True, slots=True)
 class IndexDefinition:
+    """描述指数元数据、逻辑波段、参数和跨数组后端表达式的稳定契约。"""
     id: str
     name: str
     formula: str
@@ -41,6 +48,7 @@ class IndexDefinition:
         bands: dict[str, Array],
         parameters: dict[str, float] | None = None,
     ) -> Array:
+        """校验所需波段、合并参数并调用统一公式表达式。"""
         missing = set(self.required_bands) - bands.keys()
         if missing:
             raise ValueError(f"{self.id} 缺少波段: {', '.join(sorted(missing))}")
@@ -48,6 +56,7 @@ class IndexDefinition:
         return self.expression(xp, bands, merged_parameters)
 
     def public_metadata(self) -> dict[str, Any]:
+        """返回可直接提供给 API 和前端的指数元数据。"""
         return {
             "id": self.id,
             "name": self.name,
@@ -63,10 +72,12 @@ class IndexDefinition:
 
 
 def _ratio(a: str, b: str) -> Expression:
+    """完成模块内部的 ratio 辅助处理。"""
     return lambda xp, bands, _params: safe_divide(xp, bands[a], bands[b])
 
 
 def _normalized(a: str, b: str) -> Expression:
+    """完成模块内部的 normalized 辅助处理。"""
     return lambda xp, bands, _params: safe_divide(xp, bands[a] - bands[b], bands[a] + bands[b])
 
 
@@ -540,6 +551,7 @@ if CORE_INDEX_COUNT < 30:
 
 
 def get_index(index_id: str) -> IndexDefinition:
+    """执行 get_index 对应的领域操作并返回结构化结果。"""
     try:
         return INDEX_REGISTRY[index_id.lower()]
     except KeyError as error:

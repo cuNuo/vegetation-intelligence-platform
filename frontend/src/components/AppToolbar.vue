@@ -1,3 +1,9 @@
+<!-- frontend/src/components/AppToolbar.vue -->
+<!-- 文件说明：应用顶部工具栏。 -->
+<!-- 主要职责：展示主题、后端状态和全局面板开关。 -->
+<!-- 对外约定：props 与 toggle-theme/toggle-agent/toggle-telemetry 事件。 -->
+<!-- 依赖边界：不直接修改 store。 -->
+
 <script setup lang="ts">
 import type { ThemeMode } from '@/composables/useTheme'
 

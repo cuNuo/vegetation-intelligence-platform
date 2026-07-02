@@ -1,3 +1,9 @@
+# backend/app/pygeoapi_processor.py
+# 文件说明：pygeoapi 动态植被指数处理器。
+# 主要职责：把标准 Process 输入转换为 RasterTask。
+# 对外入口：SpectralIndexProcessor、PROCESS_METADATA。
+# 依赖边界：复用注册表与 RasterPipeline。
+
 """pygeoapi动态植被指数Processor插件。"""
 
 from __future__ import annotations
@@ -52,9 +58,11 @@ class SpectralIndexProcessor(BaseProcessor):
     """单个类动态处理全部注册指数。"""
 
     def __init__(self, processor_def: dict[str, Any]) -> None:
+        """初始化实例依赖、运行状态和可配置参数。"""
         super().__init__(processor_def, PROCESS_METADATA)
 
     def execute(self, data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        """解析标准处理输入，复用分块流水线并返回 JSON 结果。"""
         try:
             index_id = str(data["index"]).lower()
             get_index(index_id)
@@ -74,4 +82,5 @@ class SpectralIndexProcessor(BaseProcessor):
             raise ProcessorExecuteError(str(error)) from error
 
     def __repr__(self) -> str:
+        """完成模块内部的 repr__ 辅助处理。"""
         return "<SpectralIndexProcessor>"

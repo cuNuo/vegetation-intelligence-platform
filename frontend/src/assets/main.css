@@ -1,3 +1,10 @@
+/* frontend/src/assets/main.css
+ * 文件说明：应用全局设计变量与基础样式。
+ * 主要职责：定义字体、颜色、间距、主题变量和页面重置。
+ * 对外入口：CSS 自定义属性。
+ * 依赖边界：组件专属样式保留在各 Vue SFC。
+ */
+
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&display=swap');
 
 :root {

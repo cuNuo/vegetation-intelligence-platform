@@ -1,5 +1,9 @@
 # backend/app/services/tiles.py
-# 文件说明：GeoTIFF/COG 动态瓦片渲染、路径约束与内存瓦片缓存服务。
+# 文件说明：GeoTIFF/COG 动态地图瓦片服务。
+# 主要职责：按 Web Mercator 范围读取、拉伸并输出 PNG。
+# 对外入口：render_geotiff_tile。
+# 依赖边界：路径限制在数据目录，缓存包含修改时间。
+
 """GeoTIFF/COG 动态瓦片渲染服务。"""
 
 from __future__ import annotations
@@ -122,6 +126,7 @@ def _tile_stretches_cached(
 
 
 def _tile_bounds_mercator(z: int, x: int, y: int) -> tuple[float, float, float, float]:
+    """完成模块内部的 tile_bounds_mercator 辅助处理。"""
     scale = 2**z
     tile_span = WEB_MERCATOR_LIMIT * 2 / scale
     west = -WEB_MERCATOR_LIMIT + x * tile_span
@@ -132,12 +137,14 @@ def _tile_bounds_mercator(z: int, x: int, y: int) -> tuple[float, float, float, 
 
 
 def _display_indexes(count: int) -> list[int]:
+    """完成模块内部的 display_indexes 辅助处理。"""
     if count >= 3:
         return [3, 2, 1]
     return [1]
 
 
 def _render_array(data: np.ma.MaskedArray, stretches: tuple[tuple[float, float], ...]) -> bytes:
+    """完成模块内部的 render_array 辅助处理。"""
     mask = np.ma.getmaskarray(data)
     if data.shape[0] == 1:
         valid = ~mask[0] & np.isfinite(data[0])
@@ -162,6 +169,7 @@ def _render_rgb(
     valid: np.ndarray,
     stretches: tuple[tuple[float, float], ...],
 ) -> np.ndarray:
+    """完成模块内部的 render_rgb 辅助处理。"""
     rgba = np.zeros((TILE_SIZE, TILE_SIZE, 4), dtype=np.uint8)
     for channel in range(3):
         rgba[..., channel] = _stretch(
@@ -178,6 +186,7 @@ def _render_single_band(
     valid: np.ndarray,
     stretch: tuple[float, float] | None,
 ) -> np.ndarray:
+    """完成模块内部的 render_single_band 辅助处理。"""
     rgba = np.zeros((TILE_SIZE, TILE_SIZE, 4), dtype=np.uint8)
     stretched = _stretch(array, valid, stretch)
     rgba[..., 0] = np.clip(38 + stretched * 0.55, 0, 255).astype(np.uint8)
@@ -192,6 +201,7 @@ def _stretch(
     valid: np.ndarray,
     stretch: tuple[float, float] | None,
 ) -> np.ndarray:
+    """完成模块内部的 stretch 辅助处理。"""
     if not valid.any():
         return np.zeros((TILE_SIZE, TILE_SIZE), dtype=np.uint8)
     if stretch is None:
@@ -204,6 +214,7 @@ def _stretch(
 
 
 def _empty_tile() -> bytes:
+    """完成模块内部的 empty_tile 辅助处理。"""
     image = Image.new("RGBA", (TILE_SIZE, TILE_SIZE), (0, 0, 0, 0))
     output = BytesIO()
     image.save(output, format="PNG")

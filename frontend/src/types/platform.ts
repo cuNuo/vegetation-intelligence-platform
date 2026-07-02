@@ -1,6 +1,8 @@
-
 // frontend/src/types/platform.ts
-// 文件说明：前后端共享的平台 API 响应类型与遥感业务数据结构。
+// 文件说明：前后端共享业务类型。
+// 主要职责：描述资产、指数、任务、产品、Agent、SSE 和系统能力契约。
+// 对外入口：导出的 TypeScript interface/type。
+// 依赖边界：字段变化必须与 Pydantic Schema 和 API 同步。
 
 export interface RasterMetadata {
   path: string

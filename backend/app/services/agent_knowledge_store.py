@@ -1,5 +1,9 @@
 # backend/app/services/agent_knowledge_store.py
-# 文件说明：Agent 外部知识的内存/PostgreSQL 存储、检索与清理。
+# 文件说明：Agent 外部知识内存/PostgreSQL 存储。
+# 主要职责：保存、加载、清理和词项评分召回知识文档。
+# 对外入口：save_knowledge_document、search_persisted_knowledge。
+# 依赖边界：查询文本不作为指令执行。
+
 """Agent外部知识库存储与召回。"""
 
 from __future__ import annotations
@@ -37,10 +41,12 @@ CREATE TABLE IF NOT EXISTS vegetation_agent_knowledge_documents (
 
 
 def is_enabled() -> bool:
+    """执行 is_enabled 对应的领域操作并返回结构化结果。"""
     return bool(settings.database_url)
 
 
 def initialize_knowledge_store() -> bool:
+    """执行 initialize_knowledge_store 对应的领域操作并返回结构化结果。"""
     if not settings.database_url:
         return False
     try:
@@ -55,6 +61,7 @@ def initialize_knowledge_store() -> bool:
 
 
 def save_knowledge_document(spec: dict[str, Any]) -> dict[str, Any]:
+    """执行 save_knowledge_document 对应的领域操作并返回结构化结果。"""
     content = str(spec.get("content") or "").strip()
     if not content:
         raise ValueError("知识文档内容不能为空")
@@ -93,6 +100,7 @@ def save_knowledge_document(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_knowledge_documents(limit: int = 80) -> list[dict[str, Any]]:
+    """执行 load_knowledge_documents 对应的领域操作并返回结构化结果。"""
     if not initialize_knowledge_store():
         return list(_MEMORY_DOCUMENTS.values())[-limit:]
     import psycopg
@@ -144,6 +152,7 @@ def delete_knowledge_documents_by_source(source: str) -> int:
 
 
 def search_persisted_knowledge(query: str, limit: int = 6) -> list[dict[str, Any]]:
+    """执行 search_persisted_knowledge 对应的领域操作并返回结构化结果。"""
     terms = _tokenize(query)
     hits = []
     for document in load_knowledge_documents():
@@ -165,6 +174,7 @@ def search_persisted_knowledge(query: str, limit: int = 6) -> list[dict[str, Any
 
 
 def _tokenize(value: str) -> set[str]:
+    """完成模块内部的 tokenize 辅助处理。"""
     words = set(re.findall(r"[a-zA-Z0-9_]+", value.lower()))
     chinese_terms = {
         term
@@ -198,6 +208,7 @@ def _tokenize(value: str) -> set[str]:
 
 
 def _score(terms: set[str], content: str) -> float:
+    """完成模块内部的 score 辅助处理。"""
     if not terms:
         return 0.0
     lowered = content.lower()
