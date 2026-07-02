@@ -1,0 +1,30 @@
+
+> vegetation-intelligence-console@0.1.0 dev
+> vite --host 127.0.0.1 --port 5174
+
+
+  [32m[1mVITE[22m v7.3.5[39m  [2mready in [0m[1m446[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5174[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m01:24:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.vue, /src/components/AssetToolbar.vue, /src/components/AgentDrawer.vue[22m
+[2m01:24:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.vue, /src/components/AssetToolbar.vue, /src/components/AgentDrawer.vue[22m
+[2m01:38:01[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue, /src/components/MapWorkspace.vue?vue&type=style&index=0&scoped=20239eb9&lang.css[22m
+[2m01:38:45[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue[22m
+[2m01:39:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue?vue&type=style&index=0&scoped=984a806d&lang.css[22m
+[2m01:39:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/IndexCatalog.vue[22m
+[2m01:39:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/IndexCatalog.vue?vue&type=style&index=0&scoped=09a7b8e6&lang.css[22m
+[2m01:40:36[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/App.vue, /src/App.vue?vue&type=style&index=0&scoped=7a7a37b1&lang.css[22m
+[2m01:40:41[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue[22m
+[2m01:40:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue[22m
+[2m01:40:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue[22m
+[2m01:41:05[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/IndexCatalog.vue[22m
+[2m01:41:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue[22m
+[2m01:42:40[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AgentDrawer.vue?vue&type=style&index=0&scoped=984a806d&lang.css[22m
+[2m01:46:07[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m01:48:32[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m01:49:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue, /src/components/MapWorkspace.vue?vue&type=style&index=0&scoped=20239eb9&lang.css[22m
+[2m01:49:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m01:49:52[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m01:49:54[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m
+[2m01:51:31[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/MapWorkspace.vue[22m

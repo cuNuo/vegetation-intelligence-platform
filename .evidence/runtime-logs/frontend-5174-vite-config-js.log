@@ -18,3 +18,6 @@
 [2m00:53:25[22m [36m[1m[vite][22m[39m server restarted.
 [2m00:53:40[22m [36m[1m[vite][22m[39m [32m../.env changed, restarting server...[39m
 [2m00:53:40[22m [36m[1m[vite][22m[39m server restarted.
+[2m01:00:55[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/IndexCatalog.vue[22m
+[2m01:01:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/IndexCatalog.vue?vue&type=style&index=0&scoped=09a7b8e6&lang.css[22m
+[2m01:02:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/components/AppStatusBar.vue[22m
