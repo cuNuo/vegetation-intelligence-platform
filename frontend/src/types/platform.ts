@@ -11,6 +11,12 @@ export interface RasterMetadata {
   resolution: [number, number]
   nodata: number | null
   descriptions: Array<string | null>
+  bandMetadata?: Array<{
+    band: number
+    description: string | null
+    tags: Record<string, string>
+    wavelengthNm: number | null
+  }>
 }
 
 export interface UploadedAsset {

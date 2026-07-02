@@ -47,9 +47,9 @@ async function refreshJobs() {
   }
 }
 
-async function selectJobResult(job: JobRecord) {
+async function selectJobResult(job: JobRecord, productIndex = 0) {
   const result = await api.getResults(job.id)
-  store.setActiveProduct(result.products[0] ?? null)
+  store.setActiveResult(result, productIndex)
   navigateTo('workspace')
 }
 
@@ -114,10 +114,18 @@ onBeforeUnmount(() => window.clearInterval(pollTimer))
         <section v-if="store.ui.isTelemetryVisible" id="jobs" class="telemetry-grid">
           <JobProgressPanel
             :jobs="store.jobs"
+            :active-result="store.activeResult"
+            :active-product-index="store.activeProductIndex"
             @select-result="selectJobResult"
+            @select-job-product="selectJobResult"
+            @select-product="store.selectActiveProduct"
             @cancel-job="cancelJob"
           />
-          <StatisticsDashboard :product="store.activeProduct" />
+          <StatisticsDashboard
+            :products="store.activeProducts"
+            :active-index="store.activeProductIndex"
+            @select-product="store.selectActiveProduct"
+          />
         </section>
       </Transition>
 

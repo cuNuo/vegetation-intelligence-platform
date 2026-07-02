@@ -28,16 +28,38 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-async function uploadForm<T>(url: string, formData: FormData): Promise<T> {
-  const response = await fetch(url, {
-    method: 'POST',
-    body: formData,
+async function uploadForm<T>(
+  url: string,
+  formData: FormData,
+  onProgress?: (progress: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return
+      onProgress?.(Math.round((event.loaded / event.total) * 100))
+    }
+    xhr.onload = () => {
+      const payload = parseUploadResponse<T>(xhr.responseText)
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100)
+        resolve(payload)
+        return
+      }
+      reject(new Error(payload.detail ?? '上传失败'))
+    }
+    xhr.onerror = () => reject(new Error('上传连接失败'))
+    xhr.send(formData)
   })
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error(payload.detail ?? '上传失败')
+}
+
+function parseUploadResponse<T>(responseText: string): T & { detail?: string } {
+  try {
+    return JSON.parse(responseText || '{}') as T & { detail?: string }
+  } catch {
+    return { detail: responseText || '上传失败' } as T & { detail?: string }
   }
-  return response.json() as Promise<T>
 }
 
 async function requestStream(
@@ -88,10 +110,13 @@ function parseSseFrame(frame: string): AgentStreamEvent | null {
 
 export function usePlatformApi() {
 
-  async function uploadAsset(file: File): Promise<UploadedAsset> {
+  async function uploadAsset(
+    file: File,
+    onProgress?: (progress: number) => void,
+  ): Promise<UploadedAsset> {
     const formData = new FormData()
     formData.append('file', file)
-    return uploadForm<UploadedAsset>('/api/assets/upload', formData)
+    return uploadForm<UploadedAsset>('/api/assets/upload', formData, onProgress)
   }
 
   async function executeAssetBatch(

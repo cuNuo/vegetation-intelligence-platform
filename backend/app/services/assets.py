@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,18 @@ def inspect_raster(path: str) -> dict[str, Any]:
         raise FileNotFoundError(f"影像不存在: {resolved}")
     with rasterio.open(resolved) as dataset:
         geographic_bounds = _geographic_bounds(dataset)
+        band_metadata = [
+            {
+                "band": band_index,
+                "description": dataset.descriptions[band_index - 1],
+                "tags": dataset.tags(band_index),
+                "wavelengthNm": _extract_wavelength_nm(
+                    dataset.descriptions[band_index - 1],
+                    dataset.tags(band_index),
+                ),
+            }
+            for band_index in range(1, dataset.count + 1)
+        ]
         return {
             "path": str(resolved),
             "width": dataset.width,
@@ -38,7 +51,29 @@ def inspect_raster(path: str) -> dict[str, Any]:
             "resolution": list(dataset.res),
             "nodata": dataset.nodata,
             "descriptions": list(dataset.descriptions),
+            "bandMetadata": band_metadata,
         }
+
+
+def _extract_wavelength_nm(description: str | None, tags: dict[str, Any]) -> float | None:
+    text = " ".join(
+        str(value)
+        for value in [
+            description,
+            *tags.keys(),
+            *tags.values(),
+        ]
+        if value is not None
+    ).lower()
+    match = re.search(
+        r"(\d+(?:\.\d+)?)\s*(nm|nanometer|nanometers|µm|um|micrometer|micrometers)",
+        text,
+    )
+    if not match:
+        return None
+    value = float(match.group(1))
+    unit = match.group(2)
+    return value * 1000 if unit in {"µm", "um", "micrometer", "micrometers"} else value
 
 
 def write_asset_preview(source_path: Path, target_path: Path) -> None:

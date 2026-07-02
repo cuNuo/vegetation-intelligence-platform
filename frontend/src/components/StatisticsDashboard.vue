@@ -16,12 +16,18 @@ import type { Product } from '@/types/platform'
 use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const props = defineProps<{
-  product: Product | null
+  products: Product[]
+  activeIndex: number
+}>()
+
+const emit = defineEmits<{
+  selectProduct: [index: number]
 }>()
 
 const chartContainer = useTemplateRef<HTMLDivElement>('chartContainer')
 const chart = shallowRef<EChartsType | null>(null)
-const stats = computed(() => props.product?.statistics)
+const product = computed(() => props.products[props.activeIndex] ?? null)
+const stats = computed(() => product.value?.statistics)
 let resizeObserver: ResizeObserver | undefined
 let themeObserver: MutationObserver | undefined
 
@@ -81,7 +87,7 @@ async function renderChart() {
   })
 }
 
-watch(() => props.product, renderChart)
+watch(product, renderChart)
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   themeObserver?.disconnect()
@@ -95,6 +101,17 @@ onBeforeUnmount(() => {
       <span>PIXEL DISTRIBUTION</span>
       <h2>{{ product?.name ?? '结果统计' }}</h2>
     </header>
+    <div v-if="products.length > 1" class="product-tabs" aria-label="结果指数切换">
+      <button
+        v-for="(item, index) in products"
+        :key="`${item.index}-${item.path}`"
+        type="button"
+        :class="{ active: index === activeIndex }"
+        @click="emit('selectProduct', index)"
+      >
+        {{ item.index.toUpperCase() }}
+      </button>
+    </div>
     <div v-if="stats" class="stats-content">
       <div class="metric-grid">
         <div>
@@ -136,6 +153,29 @@ onBeforeUnmount(() => {
   font-family: var(--font-display);
   font-size: 22px;
   font-weight: 500;
+}
+
+.product-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.product-tabs button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.product-tabs button.active {
+  border-color: var(--accent-strong);
+  color: var(--acid);
 }
 
 .metric-grid {

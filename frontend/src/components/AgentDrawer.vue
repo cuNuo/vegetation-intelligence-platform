@@ -196,7 +196,7 @@ async function handleConfirmStreamEvent(event: AgentStreamEvent) {
         store.jobs.map((job) => (job.id === jobId ? { ...job, result } : job)),
       )
     }
-    if (result.products[0]) store.setActiveProduct(result.products[0])
+    store.setActiveResult(result)
     interpretation.value = await api.interpretResults(
       result.products,
       lastUserGoal.value,
@@ -302,6 +302,11 @@ async function confirmPlan() {
     appendStatus(errorMessage.value)
     return
   }
+  if (!store.bandValidation.valid) {
+    errorMessage.value = `波段映射未通过验证：${store.bandValidation.messages.join('；')}`
+    appendStatus(errorMessage.value)
+    return
+  }
   isThinking.value = true
   errorMessage.value = ''
   try {
@@ -350,7 +355,7 @@ watch(
           if (job.status === 'successful') {
             const result = await api.getResults(jobId)
             store.setJobs([{ ...job, result }, ...merged.filter((item) => item.id !== job.id)])
-            if (result.products[0]) store.setActiveProduct(result.products[0])
+            store.setActiveResult(result)
             interpretation.value = await api.interpretResults(
               result.products,
               lastUserGoal.value,
@@ -907,7 +912,7 @@ async function interpretResults() {
   flex: 1;
   min-height: 0;
   gap: 8px;
-  align-content: start;
+  align-content: end;
   margin-top: 0;
   overflow: auto;
   padding: 2px 3px 8px 0;

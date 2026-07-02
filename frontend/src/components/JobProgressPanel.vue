@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import type { JobRecord } from '@/types/platform'
+import type { JobRecord, RasterResult } from '@/types/platform'
 
 defineProps<{
   jobs: JobRecord[]
+  activeResult: RasterResult | null
+  activeProductIndex: number
 }>()
 
 const emit = defineEmits<{
   selectResult: [job: JobRecord]
+  selectJobProduct: [job: JobRecord, index: number]
+  selectProduct: [index: number]
   cancelJob: [job: JobRecord]
 }>()
 
@@ -55,7 +59,7 @@ function statusLabel(status: string) {
             :disabled="job.status !== 'successful'"
             @click="emit('selectResult', job)"
           >
-            结果
+            打开结果
           </button>
           <button
             type="button"
@@ -63,6 +67,21 @@ function statusLabel(status: string) {
             @click="emit('cancelJob', job)"
           >
             取消
+          </button>
+        </div>
+        <div v-if="job.result?.products?.length" class="product-switcher" aria-label="任务结果指数">
+          <button
+            v-for="(product, index) in job.result.products"
+            :key="`${job.id}-${product.index}`"
+            type="button"
+            :class="{
+              active:
+                activeResult === job.result &&
+                activeProductIndex === index,
+            }"
+            @click="emit('selectJobProduct', job, index)"
+          >
+            {{ product.index.toUpperCase() }}
           </button>
         </div>
       </article>
@@ -188,6 +207,29 @@ function statusLabel(status: string) {
   color: var(--text-2);
   font-size: 12px;
   cursor: pointer;
+}
+
+.product-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.product-switcher button {
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.product-switcher button.active {
+  border-color: var(--accent-strong);
+  color: var(--acid);
 }
 
 .job-actions button:disabled {
