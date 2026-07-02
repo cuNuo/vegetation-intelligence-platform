@@ -16,7 +16,9 @@ const isMappingOpen = shallowRef(false)
 const uploadingFileName = shallowRef('')
 const currentUploadProgress = shallowRef(0)
 const totalUploadProgress = shallowRef(0)
-const uploadStage = shallowRef<'idle' | 'uploading' | 'received' | 'metadata' | 'preview' | 'located'>('idle')
+const uploadStage = shallowRef<
+  'idle' | 'uploading' | 'received' | 'metadata' | 'pyramid' | 'preview' | 'located'
+>('idle')
 const message = shallowRef('选择或拖入GeoTIFF，系统会保存到后端输入目录')
 const bandLabels: Record<string, string> = {
   blue: 'Blue',
@@ -63,6 +65,7 @@ const uploadStageLabel = computed(() => {
     uploading: '上传中',
     received: '后端接收完成',
     metadata: '读取元数据',
+    pyramid: '检查/创建影像金字塔',
     preview: '生成预览/瓦片就绪',
     located: '已定位',
   }
@@ -71,18 +74,16 @@ const uploadStageLabel = computed(() => {
 const pyramidLevels = computed(() => {
   const asset = selectedAsset.value
   if (!asset) return []
-  const levels: string[] = []
-  let width = asset.metadata.width
-  let height = asset.metadata.height
-  let level = 1
-  while (width > 256 || height > 256) {
-    width = Math.max(1, Math.ceil(width / 2))
-    height = Math.max(1, Math.ceil(height / 2))
-    levels.push(`L${level} ${width}×${height}`)
-    level += 1
-    if (levels.length >= 5) break
-  }
-  return levels
+  return (asset.metadata.overviewLevels ?? []).slice(0, 6).map((factor, index) => (
+    `L${index + 1} ${Math.ceil(asset.metadata.width / factor)}×${Math.ceil(asset.metadata.height / factor)}`
+  ))
+})
+const pyramidStatusLabel = computed(() => {
+  const status = selectedAsset.value?.metadata.overviewStatus
+  if (status === 'built') return '首次导入已创建内部金字塔'
+  if (status === 'reused') return '已复用影像自带金字塔'
+  if (status === 'not-needed') return '小影像无需额外金字塔'
+  return '等待影像'
 })
 
 function openPicker() {
@@ -108,15 +109,22 @@ async function uploadFiles(files: FileList | File[]) {
         currentUploadProgress.value = progress
         totalUploadProgress.value = Math.round(((index + progress / 100) / geotiffs.length) * 100)
         if (progress >= 100) {
-          uploadStage.value = 'metadata'
-          message.value = `正在解析影像元数据：${file.name}（${index + 1}/${geotiffs.length}）`
+          uploadStage.value = 'pyramid'
+          message.value = `正在读取元数据并检查影像金字塔：${file.name}（${index + 1}/${geotiffs.length}）`
           return
         }
         uploadStage.value = 'uploading'
         message.value = `正在上传 ${file.name}：${progress}%（${index + 1}/${geotiffs.length}）`
       }))
       uploadStage.value = 'preview'
-      message.value = `预览与瓦片入口已就绪：${file.name}`
+      const overviewStatus = uploaded[uploaded.length - 1]?.metadata.overviewStatus
+      if (overviewStatus === 'built') {
+        message.value = `影像金字塔与预览已创建：${file.name}`
+      } else if (overviewStatus === 'reused') {
+        message.value = `已复用影像金字塔，预览与瓦片入口就绪：${file.name}`
+      } else {
+        message.value = `影像无需额外金字塔，预览与瓦片入口就绪：${file.name}`
+      }
     }
     uploadStage.value = 'received'
     store.addUploadedAssets(uploaded)
@@ -246,8 +254,8 @@ function validateBandMapping() {
 
     <div class="asset-stat">
       <span>缩略图金字塔</span>
-      <strong>{{ pyramidLevels.length ? pyramidLevels.join(' / ') : '等待影像' }}</strong>
-      <small>计算结果输出COG概览层，导入阶段预估预览层级</small>
+      <strong>{{ pyramidLevels.length ? pyramidLevels.join(' / ') : pyramidStatusLabel }}</strong>
+      <small>{{ pyramidStatusLabel }}；计算仍使用原始分辨率</small>
     </div>
 
     <button type="button" class="asset-stat mapping-entry" @click="isMappingOpen = true">
@@ -279,7 +287,9 @@ function validateBandMapping() {
           <span>
             {{
               selectedAsset
-                ? hasWavelengthMetadata
+                ? selectedAsset.metadata.bandInferenceSource === 'filename-profile'
+                  ? `${selectedAsset.metadata.sensor}，已依据原始数据配置自动映射`
+                  : hasWavelengthMetadata
                   ? `${selectedAsset.metadata.count} 个源波段，已优先按波长自动映射`
                   : `${selectedAsset.metadata.count} 个源波段，无波长元数据，按常见顺序兜底`
                 : '尚未导入影像'
@@ -320,8 +330,10 @@ function validateBandMapping() {
   grid-template-columns: minmax(min(100%, 460px), 1.45fr) repeat(3, minmax(min(100%, 180px), 0.7fr)) minmax(min(100%, 180px), 0.5fr);
   gap: 1px;
   min-width: 0;
+  height: max-content;
   min-height: clamp(88px, 8dvh, 108px);
-  overflow: clip;
+  grid-auto-rows: minmax(clamp(88px, 8dvh, 108px), auto);
+  overflow: visible;
   border: 1px solid var(--border);
   background: var(--border);
   transition: border-color 160ms ease, box-shadow 160ms ease;

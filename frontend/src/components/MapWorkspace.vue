@@ -23,15 +23,19 @@ type CompareMode = 'before' | 'after' | 'both'
 const mapContainer = useTemplateRef<HTMLDivElement>('mapContainer')
 const map = shallowRef<Map | null>(null)
 let resizeObserver: ResizeObserver | undefined
+let mapReady = false
 const opacity = defineModel<number>('opacity', { default: 0.78 })
 const cursorCoordinates = shallowRef('将鼠标移入地图读取坐标')
 const activeBasemap = shallowRef<BasemapKey>('image')
 const compareMode = shallowRef<CompareMode>('both')
 const sourceTilesInView = shallowRef(false)
+const sourceTilesReady = shallowRef(false)
 const resultTilesInView = shallowRef(false)
 const mapBearing = shallowRef(0)
 const seenSourceKeys = new Set<string>()
 let pendingSourceLocateKey = ''
+let renderedSourceSignature = ''
+let renderedProductSignature = ''
 const layerState = reactive({
   basemap: true,
   sourcePreview: true,
@@ -45,17 +49,43 @@ const TIANDITU_TILE =
   TIANDITU_TOKEN
 const DEFAULT_LOCATE_MAX_ZOOM = 16
 
-const basemaps: Record<BasemapKey, { label: string; layers: string[] }> = {
-  vector: { label: '矢量', layers: ['tdt-vec', 'tdt-cva'] },
-  image: { label: '影像', layers: ['tdt-img', 'tdt-cia'] },
-  terrain: { label: '地形', layers: ['tdt-ter', 'tdt-cta'] },
+const basemaps: Record<
+  BasemapKey,
+  {
+    label: string
+    layers: Array<{ id: string; sourceId: string; tileLayer: string }>
+  }
+> = {
+  vector: {
+    label: '矢量',
+    layers: [
+      { id: 'tdt-vec', sourceId: 'tiandituVec', tileLayer: 'vec' },
+      { id: 'tdt-cva', sourceId: 'tiandituCva', tileLayer: 'cva' },
+    ],
+  },
+  image: {
+    label: '影像',
+    layers: [
+      { id: 'tdt-img', sourceId: 'tiandituImg', tileLayer: 'img' },
+      { id: 'tdt-cia', sourceId: 'tiandituCia', tileLayer: 'cia' },
+    ],
+  },
+  terrain: {
+    label: '地形',
+    layers: [
+      { id: 'tdt-ter', sourceId: 'tiandituTer', tileLayer: 'ter' },
+      { id: 'tdt-cta', sourceId: 'tiandituCta', tileLayer: 'cta' },
+    ],
+  },
 }
 
 const basemapOptions = Object.entries(basemaps).map(([key, item]) => ({
   key: key as BasemapKey,
   label: item.label,
 }))
-const allBasemapLayers = Object.values(basemaps).flatMap((item) => item.layers)
+const allBasemapLayers = Object.values(basemaps).flatMap((item) =>
+  item.layers.map((layer) => layer.id),
+)
 
 function artifactUrl(objectKey?: string | null, filePath?: string | null) {
   const key = objectKey?.replaceAll('\\', '/').replace(/^\/+/, '')
@@ -108,7 +138,8 @@ const statusText = computed(() => {
 })
 const sourceLayerLabel = computed(() => (assetTileUrl.value ? '导入影像 TIF' : hasBeforePreview.value ? '导入影像预览' : '影像范围'))
 const sourceRenderMode = computed(() => {
-  if (assetTileUrl.value && sourceTilesInView.value) return '原图 TIF 瓦片'
+  if (assetTileUrl.value && sourceTilesReady.value) return '原图 TIF 瓦片'
+  if (assetTileUrl.value && assetPreviewUrl.value) return '预览就绪，原图瓦片加载中'
   if (assetTileUrl.value) return '原图 TIF，进入范围后加载'
   if (assetPreviewUrl.value) return 'PNG 预览'
   return '未加载'
@@ -146,9 +177,49 @@ function setLayerVisibility(layerId: string, visible: boolean) {
   instance.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none')
 }
 
+function firstAnalysisLayerId() {
+  const instance = map.value
+  if (!instance) return undefined
+  return [
+    'source-preview',
+    'source-tiles',
+    'vegetation-result-preview',
+    'vegetation-result',
+    'source-footprint-fill',
+    'source-footprint-line',
+  ].find((layerId) => instance.getLayer(layerId))
+}
+
+function ensureBasemapLayers(key: BasemapKey) {
+  const instance = mapWhenStyleReady(() => ensureBasemapLayers(key))
+  if (!instance) return
+  const beforeId = firstAnalysisLayerId()
+  for (const layer of basemaps[key].layers) {
+    if (!instance.getSource(layer.sourceId)) {
+      instance.addSource(layer.sourceId, {
+        type: 'raster',
+        tiles: [TIANDITU_TILE.replaceAll('{layer}', layer.tileLayer)],
+        tileSize: 256,
+        attribution: `天地图${basemaps[key].label}`,
+      })
+    }
+    if (!instance.getLayer(layer.id)) {
+      instance.addLayer(
+        {
+          id: layer.id,
+          type: 'raster',
+          source: layer.sourceId,
+        },
+        beforeId,
+      )
+    }
+  }
+}
+
 function syncBasemapVisibility() {
+  ensureBasemapLayers(activeBasemap.value)
   for (const layerId of allBasemapLayers) {
-    const isActive = basemaps[activeBasemap.value].layers.includes(layerId)
+    const isActive = basemaps[activeBasemap.value].layers.some((layer) => layer.id === layerId)
     setLayerVisibility(layerId, layerState.basemap && isActive)
   }
 }
@@ -168,8 +239,8 @@ function shouldShowResult() {
 function mapWhenStyleReady(callback: () => void) {
   const instance = map.value
   if (!instance) return null
-  if (!instance.isStyleLoaded()) {
-    instance.once('idle', callback)
+  if (!mapReady) {
+    instance.once('load', callback)
     return null
   }
   return instance
@@ -213,9 +284,61 @@ function refreshTileDemand() {
   resultTilesInView.value = Boolean(layerState.result && isBoundsInViewport(resultBounds.value))
 }
 
+function promoteSourceTilesIfReady() {
+  const instance = map.value
+  if (
+    sourceTilesReady.value
+    || !instance?.getSource('source-tiles')
+    || !isBoundsInViewport(sourceBounds.value)
+    || !instance.isSourceLoaded('source-tiles')
+  ) return
+  sourceTilesReady.value = true
+  syncSourcePaint()
+}
+
+function syncSourcePaint() {
+  const instance = map.value
+  if (!instance) return
+  const showSource = shouldShowSourcePreview()
+  const showPreview = showSource && Boolean(assetPreviewUrl.value) && !sourceTilesReady.value
+  const showTiles =
+    showSource && Boolean(assetTileUrl.value) && (sourceTilesReady.value || !assetPreviewUrl.value)
+  if (instance.getLayer('source-preview')) {
+    instance.setPaintProperty('source-preview', 'raster-opacity', showPreview ? 0.92 : 0)
+  }
+  if (instance.getLayer('source-tiles')) {
+    instance.setPaintProperty('source-tiles', 'raster-opacity', showTiles ? 0.92 : 0)
+  }
+  if (instance.getLayer('source-footprint-fill')) {
+    instance.setPaintProperty(
+      'source-footprint-fill',
+      'fill-opacity',
+      shouldShowFootprint() && !assetPreviewUrl.value && !assetTileUrl.value ? 0.16 : 0,
+    )
+  }
+  if (instance.getLayer('source-footprint-line')) {
+    instance.setPaintProperty(
+      'source-footprint-line',
+      'line-opacity',
+      shouldShowFootprint() ? 0.9 : 0,
+    )
+  }
+}
+
 function syncSourceLayer() {
   const instance = mapWhenStyleReady(syncSourceLayer)
   if (!instance) return
+  const signature = JSON.stringify([
+    assetTileUrl.value,
+    assetPreviewUrl.value,
+    sourceBounds.value,
+  ])
+  if (signature === renderedSourceSignature) {
+    syncSourcePaint()
+    return
+  }
+  renderedSourceSignature = signature
+  sourceTilesReady.value = false
   removeLayerAndSource('source-tiles')
   removeLayerAndSource('source-preview')
   if (instance.getLayer('source-footprint-line')) instance.removeLayer('source-footprint-line')
@@ -223,7 +346,7 @@ function syncSourceLayer() {
   if (instance.getSource('source-footprint')) instance.removeSource('source-footprint')
   if (!sourceBounds.value) return
   const [west, south, east, north] = sourceBounds.value
-  if (!assetTileUrl.value && assetPreviewUrl.value) {
+  if (assetPreviewUrl.value) {
     const resultLayerId = instance.getLayer('vegetation-result') ? 'vegetation-result' : undefined
     instance.addSource('source-preview', {
       type: 'image',
@@ -262,7 +385,7 @@ function syncSourceLayer() {
       type: 'raster',
       source: 'source-tiles',
       paint: {
-        'raster-opacity': shouldShowSourcePreview() ? 0.92 : 0,
+        'raster-opacity': assetPreviewUrl.value ? 0 : shouldShowSourcePreview() ? 0.92 : 0,
         'raster-fade-duration': 0,
       },
     }, resultLayerId)
@@ -306,16 +429,36 @@ function syncSourceLayer() {
       'line-opacity': shouldShowFootprint() ? 0.9 : 0,
     },
   })
+  syncSourcePaint()
   orderAnalysisLayers()
 }
 
 function syncProductLayer() {
   const instance = mapWhenStyleReady(syncProductLayer)
   if (!instance) return
-  removeLayerAndSource('vegetation-result')
-  removeLayerAndSource('vegetation-result-preview')
   const tileSourceUrl = resultTileUrl.value
   const imagePreviewUrl = resultTileUrl.value ? null : previewUrl.value
+  const signature = JSON.stringify([tileSourceUrl, imagePreviewUrl, resultBounds.value])
+  if (signature === renderedProductSignature) {
+    if (instance.getLayer('vegetation-result')) {
+      instance.setPaintProperty(
+        'vegetation-result',
+        'raster-opacity',
+        shouldShowResult() ? opacity.value : 0,
+      )
+    }
+    if (instance.getLayer('vegetation-result-preview')) {
+      instance.setPaintProperty(
+        'vegetation-result-preview',
+        'raster-opacity',
+        shouldShowResult() ? Math.max(opacity.value * 0.62, 0.22) : 0,
+      )
+    }
+    return
+  }
+  renderedProductSignature = signature
+  removeLayerAndSource('vegetation-result')
+  removeLayerAndSource('vegetation-result-preview')
   if (!props.product || (!tileSourceUrl && !imagePreviewUrl) || !resultBounds.value) return
   const [west, south, east, north] = resultBounds.value
   if (imagePreviewUrl) {
@@ -372,8 +515,8 @@ function adaptiveMaxZoom(bounds: [number, number, number, number]) {
 function fitBounds(bounds: [number, number, number, number] | null, reason: 'auto' | 'manual' = 'manual') {
   const instance = map.value
   if (!instance) return
-  if (!instance.isStyleLoaded()) {
-    instance.once('idle', () => fitBounds(bounds, reason))
+  if (!mapReady) {
+    instance.once('load', () => fitBounds(bounds, reason))
     return
   }
   if (!bounds) return
@@ -462,74 +605,9 @@ watch(sourceBounds, () => {
 watch(activeBasemap, syncBasemapVisibility)
 watch(layerState, () => {
   syncMapLayers()
-  syncBasemapVisibility()
-  if (map.value?.getLayer('source-preview')) {
-    map.value.setPaintProperty('source-preview', 'raster-opacity', shouldShowSourcePreview() ? 0.92 : 0)
-  }
-  if (map.value?.getLayer('source-tiles')) {
-    map.value.setPaintProperty('source-tiles', 'raster-opacity', shouldShowSourcePreview() ? 0.92 : 0)
-  }
-  if (map.value?.getLayer('source-footprint-fill')) {
-    map.value.setPaintProperty(
-      'source-footprint-fill',
-      'fill-opacity',
-      shouldShowFootprint() && !assetPreviewUrl.value && !assetTileUrl.value ? 0.16 : 0,
-    )
-  }
-  if (map.value?.getLayer('source-footprint-line')) {
-    map.value.setPaintProperty('source-footprint-line', 'line-opacity', shouldShowFootprint() ? 0.9 : 0)
-  }
-  if (map.value?.getLayer('vegetation-result')) {
-    map.value.setPaintProperty('vegetation-result', 'raster-opacity', shouldShowResult() ? opacity.value : 0)
-  }
-  if (map.value?.getLayer('vegetation-result-preview')) {
-    map.value.setPaintProperty('vegetation-result-preview', 'raster-opacity', shouldShowResult() ? Math.max(opacity.value * 0.62, 0.22) : 0)
-  }
 })
 watch(compareMode, () => {
   syncMapLayers()
-  if (map.value?.getLayer('source-footprint-fill')) {
-    map.value.setPaintProperty(
-      'source-footprint-fill',
-      'fill-opacity',
-      shouldShowFootprint() && !assetPreviewUrl.value && !assetTileUrl.value ? 0.16 : 0,
-    )
-  }
-  if (map.value?.getLayer('source-footprint-line')) {
-    map.value.setPaintProperty(
-      'source-footprint-line',
-      'line-opacity',
-      shouldShowFootprint() ? 0.9 : 0,
-    )
-  }
-  if (map.value?.getLayer('vegetation-result')) {
-    map.value.setPaintProperty(
-      'vegetation-result',
-      'raster-opacity',
-      shouldShowResult() ? opacity.value : 0,
-    )
-  }
-  if (map.value?.getLayer('source-preview')) {
-    map.value.setPaintProperty(
-      'source-preview',
-      'raster-opacity',
-      shouldShowSourcePreview() ? 0.92 : 0,
-    )
-  }
-  if (map.value?.getLayer('source-tiles')) {
-    map.value.setPaintProperty(
-      'source-tiles',
-      'raster-opacity',
-      shouldShowSourcePreview() ? 0.92 : 0,
-    )
-  }
-  if (map.value?.getLayer('vegetation-result-preview')) {
-    map.value.setPaintProperty(
-      'vegetation-result-preview',
-      'raster-opacity',
-      shouldShowResult() ? Math.max(opacity.value * 0.62, 0.22) : 0,
-    )
-  }
 })
 watch(opacity, (value) => {
   if (map.value?.getLayer('vegetation-result')) {
@@ -557,52 +635,8 @@ onMounted(() => {
     attributionControl: false,
     style: {
       version: 8,
-      sources: {
-        tiandituVec: {
-          type: 'raster',
-          tiles: [TIANDITU_TILE.replaceAll('{layer}', 'vec')],
-          tileSize: 256,
-          attribution: '天地图矢量',
-        },
-        tiandituCva: {
-          type: 'raster',
-          tiles: [TIANDITU_TILE.replaceAll('{layer}', 'cva')],
-          tileSize: 256,
-          attribution: '天地图注记',
-        },
-        tiandituImg: {
-          type: 'raster',
-          tiles: [TIANDITU_TILE.replaceAll('{layer}', 'img')],
-          tileSize: 256,
-          attribution: '天地图影像',
-        },
-        tiandituCia: {
-          type: 'raster',
-          tiles: [TIANDITU_TILE.replaceAll('{layer}', 'cia')],
-          tileSize: 256,
-          attribution: '天地图影像注记',
-        },
-        tiandituTer: {
-          type: 'raster',
-          tiles: [TIANDITU_TILE.replaceAll('{layer}', 'ter')],
-          tileSize: 256,
-          attribution: '天地图地形',
-        },
-        tiandituCta: {
-          type: 'raster',
-          tiles: [TIANDITU_TILE.replaceAll('{layer}', 'cta')],
-          tileSize: 256,
-          attribution: '天地图地形注记',
-        },
-      },
-      layers: [
-        { id: 'tdt-vec', type: 'raster', source: 'tiandituVec' },
-        { id: 'tdt-cva', type: 'raster', source: 'tiandituCva' },
-        { id: 'tdt-img', type: 'raster', source: 'tiandituImg' },
-        { id: 'tdt-cia', type: 'raster', source: 'tiandituCia' },
-        { id: 'tdt-ter', type: 'raster', source: 'tiandituTer' },
-        { id: 'tdt-cta', type: 'raster', source: 'tiandituCta' },
-      ],
+      sources: {},
+      layers: [],
     },
   })
   instance.addControl(new maplibregl.NavigationControl(), 'top-right')
@@ -617,8 +651,13 @@ onMounted(() => {
   instance.on('moveend', () => {
     mapBearing.value = instance.getBearing()
     refreshTileDemand()
+    promoteSourceTilesIfReady()
+  })
+  instance.on('sourcedata', (event) => {
+    if (event.sourceId === 'source-tiles') promoteSourceTilesIfReady()
   })
   instance.on('load', () => {
+    mapReady = true
     syncMapLayers()
     locateImportedAssetIfPending()
   })
@@ -631,6 +670,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  mapReady = false
   resizeObserver?.disconnect()
   map.value?.remove()
 })

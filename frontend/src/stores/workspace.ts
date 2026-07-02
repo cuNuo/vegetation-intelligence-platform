@@ -1,3 +1,5 @@
+// frontend/src/stores/workspace.ts
+// 文件说明：工作台资产、波段映射、任务、结果和界面状态的 Pinia 单一数据源。
 import { computed, reactive, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import type {
@@ -35,8 +37,17 @@ function inferBandMapping(asset: UploadedAsset | null): Record<string, number> {
     swir2: count >= 7 ? 7 : 0,
   }
   const wavelengthMapping = inferBandMappingByWavelength(asset)
-  const mapping = { ...fallbackMapping, ...wavelengthMapping }
   const descriptions = asset.metadata.descriptions ?? []
+  const hasSpectralMetadata =
+    (asset.metadata.bandMetadata ?? []).some((band) => band.wavelengthNm !== null)
+    || descriptions.some((description) => Boolean(description?.trim()))
+  const mapping: Record<string, number> = hasSpectralMetadata
+    ? Object.fromEntries(BAND_ORDER.map((band) => [band, 0]))
+    : { ...fallbackMapping }
+  for (const band of BAND_ORDER) {
+    const inferredBand = wavelengthMapping[band]
+    if (inferredBand) mapping[band] = inferredBand
+  }
   const normalized = descriptions.map((description) =>
     (description ?? '').toLowerCase().replaceAll(/[\s_-]+/g, ''),
   )

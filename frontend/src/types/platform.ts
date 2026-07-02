@@ -14,6 +14,11 @@ export interface RasterMetadata {
   resolution: [number, number]
   nodata: number | null
   descriptions: Array<string | null>
+  sensor?: string | null
+  bandInferenceSource?: 'filename-profile' | null
+  overviewLevels?: number[]
+  overviewCount?: number
+  overviewStatus?: 'built' | 'reused' | 'not-needed'
   bandMetadata?: Array<{
     band: number
     description: string | null

@@ -199,6 +199,8 @@ def test_upload_asset_saves_geotiff_and_returns_metadata(sample_raster: Path) ->
     assert len(payload["metadata"]["bandMetadata"]) == 4
     assert payload["metadata"]["bandMetadata"][0]["band"] == 1
     assert "wavelengthNm" in payload["metadata"]["bandMetadata"][0]
+    assert payload["metadata"]["overviewStatus"] == "not-needed"
+    assert payload["metadata"]["overviewLevels"] == []
     assert Path(payload["previewPath"]).is_file()
 
 

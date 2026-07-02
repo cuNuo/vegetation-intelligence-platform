@@ -1,3 +1,5 @@
+# backend/app/services/assets.py
+# 文件说明：上传影像保存、GeoTIFF 金字塔构建、元数据检查与预览生成。
 """本地资产检查与可选MinIO访问。"""
 
 from __future__ import annotations
@@ -10,6 +12,110 @@ from uuid import uuid4
 
 from app.settings import settings
 
+_SENSOR_BAND_PROFILES = (
+    {
+        "pattern": re.compile(r"^GF01(?:[_-]|$)", re.IGNORECASE),
+        "count": 4,
+        "sensor": "GF-1",
+        "bands": (
+            ("Blue B1", 485.0),
+            ("Green B2", 555.0),
+            ("Red B3", 660.0),
+            ("NIR B4", 830.0),
+        ),
+    },
+    {
+        "pattern": re.compile(r"^LAD08(?:[_-]|$)", re.IGNORECASE),
+        "count": 7,
+        "sensor": "Landsat 8/9 OLI",
+        "bands": (
+            ("Coastal Aerosol B1", 443.0),
+            ("Blue B2", 482.0),
+            ("Green B3", 561.0),
+            ("Red B4", 655.0),
+            ("NIR B5", 865.0),
+            ("SWIR1 B6", 1610.0),
+            ("SWIR2 B7", 2200.0),
+        ),
+    },
+    {
+        "pattern": re.compile(r"^LAD09(?:[_-]|$)", re.IGNORECASE),
+        "count": 7,
+        "sensor": "Landsat 8/9 OLI",
+        "bands": (
+            ("Coastal Aerosol B1", 443.0),
+            ("Blue B2", 482.0),
+            ("Green B3", 561.0),
+            ("Red B4", 655.0),
+            ("NIR B5", 865.0),
+            ("SWIR1 B6", 1610.0),
+            ("SWIR2 B7", 2200.0),
+        ),
+    },
+    {
+        "pattern": re.compile(r"^SHB02(?:[_-]|$)", re.IGNORECASE),
+        "count": 4,
+        "sensor": "Sentinel-2A/2B MSI",
+        "bands": (
+            ("Blue B2", 490.0),
+            ("Green B3", 560.0),
+            ("Red B4", 665.0),
+            ("NIR B8", 842.0),
+        ),
+    },
+)
+
+
+def _sensor_band_profile(filename: str, count: int) -> dict[str, Any] | None:
+    """按受控文件名前缀识别缺少光谱元数据的测试影像。"""
+    for profile in _SENSOR_BAND_PROFILES:
+        if profile["count"] == count and profile["pattern"].search(filename):
+            return profile
+    return None
+
+
+def _overview_factors(width: int, height: int) -> list[int]:
+    """生成直到最长边接近 256 像素的 2 倍金字塔层级。"""
+    if max(width, height) <= 512:
+        return []
+    factors: list[int] = []
+    factor = 2
+    while factor <= 128 and min(width, height) > factor:
+        factors.append(factor)
+        if max(width / factor, height / factor) <= 256:
+            break
+        factor *= 2
+    return factors
+
+
+def ensure_raster_overviews(path: Path) -> dict[str, Any]:
+    """复用已有 overview；缺失时在受控输入 TIF 内首次构建压缩金字塔。"""
+    import rasterio
+    from rasterio.enums import Resampling
+
+    with rasterio.open(path) as dataset:
+        desired = _overview_factors(dataset.width, dataset.height)
+        existing = dataset.overviews(1) if dataset.count else []
+    if not desired:
+        return {"status": "not-needed", "levels": existing}
+    if all(factor in existing for factor in desired):
+        return {"status": "reused", "levels": existing}
+
+    with rasterio.Env(
+        COMPRESS_OVERVIEW="DEFLATE",
+        INTERLEAVE_OVERVIEW="PIXEL",
+        GDAL_TIFF_OVR_BLOCKSIZE="256",
+    ):
+        with rasterio.open(path, "r+") as dataset:
+            dataset.build_overviews(desired, Resampling.average)
+            dataset.update_tags(
+                ns="rio_overview",
+                resampling="average",
+                source="upload-first-open",
+            )
+            levels = dataset.overviews(1) if dataset.count else []
+    return {"status": "built", "levels": levels}
+
 
 def _geographic_bounds(dataset: Any) -> list[float] | None:
     if not dataset.crs:
@@ -19,7 +125,7 @@ def _geographic_bounds(dataset: Any) -> list[float] | None:
     return list(transform_bounds(dataset.crs, "EPSG:4326", *dataset.bounds))
 
 
-def inspect_raster(path: str) -> dict[str, Any]:
+def inspect_raster(path: str, filename_hint: str | None = None) -> dict[str, Any]:
     import rasterio
 
     resolved = Path(path).resolve()
@@ -27,18 +133,27 @@ def inspect_raster(path: str) -> dict[str, Any]:
         raise FileNotFoundError(f"影像不存在: {resolved}")
     with rasterio.open(resolved) as dataset:
         geographic_bounds = _geographic_bounds(dataset)
-        band_metadata = [
-            {
-                "band": band_index,
-                "description": dataset.descriptions[band_index - 1],
-                "tags": dataset.tags(band_index),
-                "wavelengthNm": _extract_wavelength_nm(
-                    dataset.descriptions[band_index - 1],
-                    dataset.tags(band_index),
-                ),
-            }
-            for band_index in range(1, dataset.count + 1)
-        ]
+        profile_filename = Path(filename_hint).name if filename_hint else resolved.name
+        sensor_profile = _sensor_band_profile(profile_filename, dataset.count)
+        band_metadata = []
+        descriptions = []
+        for band_index in range(1, dataset.count + 1):
+            original_description = dataset.descriptions[band_index - 1]
+            tags = dataset.tags(band_index)
+            wavelength_nm = _extract_wavelength_nm(original_description, tags)
+            inferred_band = sensor_profile["bands"][band_index - 1] if sensor_profile else None
+            description = original_description or (inferred_band[0] if inferred_band else None)
+            if wavelength_nm is None and inferred_band:
+                wavelength_nm = inferred_band[1]
+            descriptions.append(description)
+            band_metadata.append(
+                {
+                    "band": band_index,
+                    "description": description,
+                    "tags": tags,
+                    "wavelengthNm": wavelength_nm,
+                }
+            )
         return {
             "path": str(resolved),
             "width": dataset.width,
@@ -50,8 +165,12 @@ def inspect_raster(path: str) -> dict[str, Any]:
             "geographicBounds": geographic_bounds,
             "resolution": list(dataset.res),
             "nodata": dataset.nodata,
-            "descriptions": list(dataset.descriptions),
+            "descriptions": descriptions,
             "bandMetadata": band_metadata,
+            "sensor": sensor_profile["sensor"] if sensor_profile else None,
+            "bandInferenceSource": "filename-profile" if sensor_profile else None,
+            "overviewLevels": dataset.overviews(1) if dataset.count else [],
+            "overviewCount": len(dataset.overviews(1)) if dataset.count else 0,
         }
 
 
@@ -165,7 +284,9 @@ async def save_uploaded_asset(file: Any) -> dict[str, Any]:
     with target.open("wb") as output:
         while chunk := await file.read(1024 * 1024):
             output.write(chunk)
-    metadata = inspect_raster(str(target))
+    overview_info = ensure_raster_overviews(target)
+    metadata = inspect_raster(str(target), filename_hint=file.filename)
+    metadata["overviewStatus"] = overview_info["status"]
     preview_path = settings.data_dir / "previews" / f"{target.stem}.png"
     write_asset_preview(target, preview_path)
     return {

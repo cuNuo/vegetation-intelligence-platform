@@ -1,0 +1,4 @@
+{"file": "bajiepart1.tif", "status": "built", "levels": [2, 4, 8, 16, 32], "seconds": 14.446, "bytesBefore": 510213751, "bytesAfter": 646358223, "sensor": null}
+{"file": "GF01_130200_202301.tif", "status": "built", "levels": [2, 4, 8, 16, 32, 64], "seconds": 60.66, "bytesBefore": 868770719, "bytesAfter": 1169388992, "sensor": "GF-1"}
+{"file": "LAD08_130200_202301.tif", "status": "built", "levels": [2, 4, 8, 16, 32, 64], "seconds": 39.732, "bytesBefore": 1729394811, "bytesAfter": 1972005622, "sensor": "Landsat 8/9 OLI"}
+{"file": "SHB02_130200_202301.tif", "status": "built", "levels": [2, 4, 8, 16, 32, 64, 128], "seconds": 40.361, "bytesBefore": 2223324057, "bytesAfter": 2533074446, "sensor": "Sentinel-2A/2B MSI"}
