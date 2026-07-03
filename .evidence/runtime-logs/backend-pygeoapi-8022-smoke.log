@@ -1,0 +1,9 @@
+Generating D:\Users\24658\Desktop\软件工程\实习\backend\data\pygeoapi\openapi.yml
+Done
+[2026-07-03T12:19:01Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\process\manager\base.py:511} INFO - Starting dummy manager
+[2026-07-03T12:19:01Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\api\__init__.py:572} INFO - Process manager plugin loaded
+INFO:     127.0.0.1:64058 - "GET /processes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64059 - "GET /processes HTTP/1.1" 307 Temporary Redirect
+INFO:     127.0.0.1:64060 - "GET /openapi HTTP/1.1" 307 Temporary Redirect
+[2026-07-03T12:19:05Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\l10n.py:87} WARNING - unknown locale 'name'
+INFO:     127.0.0.1:64061 - "GET /pygeoapi/openapi HTTP/1.1" 200 OK

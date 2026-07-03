@@ -13,8 +13,8 @@ import json
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile, status
-from fastapi.responses import Response, StreamingResponse
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 
 from app.api.schemas import (
     AgentCustomIndexRequest,
@@ -61,6 +61,12 @@ router = APIRouter()
 custom_recipes: dict[str, dict[str, Any]] = {}
 
 
+def _wants_html(request: Request) -> bool:
+    """识别浏览器文档访问，避免影响程序化 JSON 调用。"""
+    accept = request.headers.get("accept", "").lower()
+    return "text/html" in accept and "application/json" not in accept
+
+
 @router.get("/api/indices")
 def list_indices(
     category: str | None = Query(default=None),
@@ -85,8 +91,10 @@ def index_detail(index_id: str) -> dict[str, Any]:
 
 
 @router.get("/processes")
-def list_processes() -> dict[str, Any]:
+def list_processes(request: Request) -> Any:
     """执行 list_processes 对应的领域操作并返回结构化结果。"""
+    if _wants_html(request):
+        return RedirectResponse(url="/pygeoapi/processes", status_code=307)
     return {
         "processes": [
             {
@@ -102,8 +110,10 @@ def list_processes() -> dict[str, Any]:
 
 
 @router.get("/processes/{process_id}")
-def describe_process(process_id: str) -> dict[str, Any]:
+def describe_process(process_id: str, request: Request) -> Any:
     """执行 describe_process 对应的领域操作并返回结构化结果。"""
+    if _wants_html(request):
+        return RedirectResponse(url=f"/pygeoapi/processes/{process_id}", status_code=307)
     try:
         item = get_index(process_id)
     except ValueError as error:

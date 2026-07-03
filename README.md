@@ -49,6 +49,19 @@ npm run dev
 
 前端顶部工具栏可切换日间/夜间主题、隐藏智能体/任务/指数面板并跳转工作区；主题偏好保存在浏览器本地。底部状态栏持续显示 API、CUDA/CPU、队列和当前结果状态。地图和统计图会随窗口及面板尺寸自动重绘。
 
+后端启动时会自动生成 pygeoapi 运行配置和 OpenAPI 文档，并挂载到同一个 `8011` 服务下。浏览器访问：
+
+- pygeoapi Processes 文档：`http://127.0.0.1:8011/processes`
+- pygeoapi OpenAPI 文档：`http://127.0.0.1:8011/openapi`
+- pygeoapi 原生首页：`http://127.0.0.1:8011/pygeoapi`
+
+程序化调用继续使用现有 JSON 接口；浏览器访问 `/processes` 时会进入 pygeoapi HTML 文档页。若需要临时单独启动 pygeoapi 原生服务，可另开终端：
+
+```powershell
+cd D:\Users\24658\Desktop\软件工程\实习\backend
+D:\miniconda\envs\giskeshe\python.exe scripts\start_pygeoapi.py --port 5001
+```
+
 ## 容器部署
 
 安装 Docker Desktop、Docker Compose 和 NVIDIA Container Toolkit 后：

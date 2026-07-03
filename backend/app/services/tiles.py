@@ -11,6 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 from PIL import Image
@@ -19,6 +20,13 @@ from app.settings import settings
 
 WEB_MERCATOR_LIMIT = 20037508.342789244
 TILE_SIZE = 256
+
+
+class TileDatasetInfo(NamedTuple):
+    """缓存瓦片渲染所需的稳定影像元数据，避免每个瓦片重复解析。"""
+
+    mercator_bounds: tuple[float, float, float, float] | None
+    indexes: tuple[int, ...]
 
 
 def resolve_tile_key(key: str) -> Path:
@@ -53,26 +61,23 @@ def _render_geotiff_tile_cached(
     import rasterio
     from rasterio.enums import Resampling
     from rasterio.transform import from_bounds
-    from rasterio.warp import reproject, transform_bounds
+    from rasterio.warp import reproject
 
     if not _is_valid_tile_index(z, x, y):
         return _empty_tile()
     source_path = resolve_tile_key(key)
     tile_bounds = _tile_bounds_mercator(z, x, y)
+    dataset_info = _tile_dataset_info_cached(key, mtime_ns, size)
+    if not dataset_info.mercator_bounds:
+        return _empty_tile()
+    if not _bounds_intersect(tile_bounds, dataset_info.mercator_bounds):
+        return _empty_tile()
+    indexes = dataset_info.indexes
+    if not indexes:
+        return _empty_tile()
+    stretches = _tile_stretches_cached(key, mtime_ns, size, indexes)
+    tile_transform = from_bounds(*tile_bounds, TILE_SIZE, TILE_SIZE)
     with rasterio.open(source_path) as dataset:
-        if not dataset.crs:
-            return _empty_tile()
-        dataset_bounds = transform_bounds(
-            dataset.crs,
-            "EPSG:3857",
-            *dataset.bounds,
-            densify_pts=21,
-        )
-        if not _bounds_intersect(tile_bounds, dataset_bounds):
-            return _empty_tile()
-        indexes = _display_indexes(dataset.count)
-        stretches = _tile_stretches_cached(key, mtime_ns, size, tuple(indexes))
-        tile_transform = from_bounds(*tile_bounds, TILE_SIZE, TILE_SIZE)
         bands = []
         for index in indexes:
             destination = np.full((TILE_SIZE, TILE_SIZE), np.nan, dtype=np.float32)
@@ -90,6 +95,26 @@ def _render_geotiff_tile_cached(
             bands.append(destination)
     data = np.ma.masked_invalid(np.stack(bands))
     return _render_array(data, stretches)
+
+
+@lru_cache(maxsize=128)
+def _tile_dataset_info_cached(key: str, mtime_ns: int, size: int) -> TileDatasetInfo:
+    """缓存影像范围和显示波段；mtime/size 变化时自动刷新。"""
+    import rasterio
+    from rasterio.warp import transform_bounds
+
+    del mtime_ns, size
+    source_path = resolve_tile_key(key)
+    with rasterio.open(source_path) as dataset:
+        if not dataset.crs:
+            return TileDatasetInfo(None, tuple())
+        bounds = transform_bounds(
+            dataset.crs,
+            "EPSG:3857",
+            *dataset.bounds,
+            densify_pts=21,
+        )
+        return TileDatasetInfo(bounds, tuple(_display_indexes(dataset.count)))
 
 
 @lru_cache(maxsize=64)
@@ -244,6 +269,7 @@ def _stretch(
     return np.where(valid, normalized * 255, 0).astype(np.uint8)
 
 
+@lru_cache(maxsize=1)
 def _empty_tile() -> bytes:
     """完成模块内部的 empty_tile 辅助处理。"""
     image = Image.new("RGBA", (TILE_SIZE, TILE_SIZE), (0, 0, 0, 0))

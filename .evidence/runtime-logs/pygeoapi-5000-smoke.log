@@ -1,0 +1,20 @@
+[2026-07-03T11:56:26Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\process\manager\base.py:511} INFO - Starting dummy manager
+[2026-07-03T11:56:26Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\api\__init__.py:572} INFO - Process manager plugin loaded
+ * Serving Flask app 'pygeoapi.flask_app'
+ * Debug mode: on
+[2026-07-03T11:56:26Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+[2026-07-03T11:56:26Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} INFO - [33mPress CTRL+C to quit[0m
+[2026-07-03T11:56:26Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} INFO -  * Restarting with stat
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\process\manager\base.py:511} INFO - Starting dummy manager
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\api\__init__.py:572} INFO - Process manager plugin loaded
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} WARNING -  * Debugger is active!
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} INFO -  * Debugger PIN: 104-413-488
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} INFO - 127.0.0.1 - - [03/Jul/2026 11:56:28] "GET / HTTP/1.1" 200 -
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} INFO - 127.0.0.1 - - [03/Jul/2026 11:56:28] "GET /openapi HTTP/1.1" 200 -
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\l10n.py:87} WARNING - unknown locale 'type'
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\l10n.py:87} WARNING - unknown locale 'type'
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\l10n.py:87} WARNING - unknown locale 'type'
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\l10n.py:87} WARNING - unknown locale 'type'
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\pygeoapi\l10n.py:87} WARNING - unknown locale 'contentmediatype'
+[2026-07-03T11:56:28Z] {D:\miniconda\envs\giskeshe\Lib\site-packages\werkzeug\_internal.py:97} INFO - 127.0.0.1 - - [03/Jul/2026 11:56:28] "GET /processes HTTP/1.1" 200 -

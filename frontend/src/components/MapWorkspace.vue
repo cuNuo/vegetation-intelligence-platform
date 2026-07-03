@@ -55,6 +55,7 @@ const TIANDITU_TILE =
 const DEFAULT_LOCATE_MAX_ZOOM = 16
 const RASTER_TILE_MAX_ZOOM = 16
 const INTERACTIVE_MAX_ZOOM = 19
+const SOURCE_TILE_WARMUP_OPACITY = 0.01
 
 const basemaps: Record<
   BasemapKey,
@@ -150,6 +151,7 @@ const sourceLayerLabel = computed(() => (assetTileUrl.value ? '导入影像 TIF'
 const sourceRenderMode = computed(() => {
   if (assetTileUrl.value && currentZoom.value > RASTER_TILE_MAX_ZOOM) return '原图 TIF，16级后平滑放大'
   if (assetTileUrl.value && sourceTilesReady.value) return '原图 TIF 瓦片'
+  if (assetTileUrl.value && assetPreviewUrl.value && sourceTilesInView.value) return '预览显示中，原图瓦片预加载'
   if (assetTileUrl.value && assetPreviewUrl.value) return '预览就绪，原图瓦片加载中'
   if (assetTileUrl.value) return '原图 TIF，进入范围后加载'
   if (assetPreviewUrl.value) return 'PNG 预览'
@@ -346,12 +348,15 @@ function syncSourcePaint() {
   const showSource = shouldShowSourcePreview()
   const showPreview = showSource && Boolean(assetPreviewUrl.value) && !sourceTilesReady.value
   const showTiles =
-    showSource && Boolean(assetTileUrl.value) && (sourceTilesReady.value || !assetPreviewUrl.value)
+    showSource
+    && Boolean(assetTileUrl.value)
+    && (sourceTilesReady.value || !assetPreviewUrl.value || sourceTilesInView.value)
+  const tileOpacity = sourceTilesReady.value || !assetPreviewUrl.value ? 0.92 : SOURCE_TILE_WARMUP_OPACITY
   if (instance.getLayer('source-preview')) {
     instance.setPaintProperty('source-preview', 'raster-opacity', showPreview ? 0.92 : 0)
   }
   if (instance.getLayer('source-tiles')) {
-    instance.setPaintProperty('source-tiles', 'raster-opacity', showTiles ? 0.92 : 0)
+    instance.setPaintProperty('source-tiles', 'raster-opacity', showTiles ? tileOpacity : 0)
   }
   if (instance.getLayer('source-footprint-fill')) {
     instance.setPaintProperty(
@@ -431,7 +436,11 @@ function syncSourceLayer() {
       type: 'raster',
       source: 'source-tiles',
       paint: {
-        'raster-opacity': assetPreviewUrl.value ? 0 : shouldShowSourcePreview() ? 0.92 : 0,
+        'raster-opacity': assetPreviewUrl.value
+          ? shouldShowSourcePreview() && sourceTilesInView.value
+            ? SOURCE_TILE_WARMUP_OPACITY
+            : 0
+          : shouldShowSourcePreview() ? 0.92 : 0,
         'raster-fade-duration': 0,
       },
     }, resultLayerId)

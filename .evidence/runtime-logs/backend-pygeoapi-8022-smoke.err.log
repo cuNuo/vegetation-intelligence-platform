@@ -1,0 +1,6 @@
+D:\Users\24658\Desktop\软件工程\实习\backend\app\main.py:17: StarletteDeprecationWarning: starlette.middleware.wsgi is deprecated and will be removed in a future release. Please refer to https://github.com/abersheeran/a2wsgi as a replacement.
+  from starlette.middleware.wsgi import WSGIMiddleware
+INFO:     Started server process [41728]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8022 (Press CTRL+C to quit)

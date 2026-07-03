@@ -18,6 +18,7 @@ output/playwright/validate-ui.cjs,test-artifact,passed,bajiepart1端到端浏览
 output/playwright/tif-tile-overlay-results.png,visual-qa,passed,bajiepart1输入TIF与输出GNDVI TIF动态瓦片叠加截图
 output/playwright/validate-tif-tiles.cjs,test-artifact,passed,bajiepart1输入/输出TIF瓦片叠加端到端验证脚本
 .evidence/active/20260702-1216-上传地图任务Agent体验优化.md,task-log,active,上传分阶段反馈、地图渐进瓦片、任务管理器与Agent布局优化记录
+.evidence/active/20260703-1154-pygeoapi文档服务支持.md,task-log,active,独立pygeoapi文档服务启动脚本、README入口与本地HTTP探测验证
 20260702-1216,上传地图任务Agent体验优化,task-log,frontend/upload-map-task-agent-progressive-ux,无,active,.evidence/active/20260702-1216-上传地图任务Agent体验优化.md
 20260702-1736,制图要素公式CI同步,task-log,frontend/upload-map-task-agent-progressive-ux,无,active,.evidence/active/20260702-1736-制图要素公式CI同步.md
 20260702-1844,导入影像金字塔真实验证,task-log,frontend/upload-first-open-overviews,无,completed,.evidence/active/20260702-1844-导入影像金字塔真实验证.md
@@ -50,3 +51,5 @@ output/playwright/result-layer-manual-04-high-zoom.png,visual-qa,passed,18级缩
 20260703-0009,Agent判读卡布局复现与回归测试,task-log,frontend/agent-interpretation-layout,无,completed,.evidence/active/20260703-0009-Agent判读卡布局复现与回归测试.md
 output/playwright/agent-drawer-layout-regression.png,visual-qa,passed,Agent判读结果异常字符串输入下的真实浏览器布局回归截图
 frontend/scripts/check-agent-layout.mjs,script,passed,AgentDrawer真实浏览器几何重叠回归检查脚本
+20260703-1219,原图瓦片加载性能优化,task-log,frontend/source-tile-warmup,无,completed,.evidence/active/20260703-1219-原图瓦片加载性能优化.md
+output/playwright/source-tile-warmup-20260703.png,visual-qa,passed,上传原图后 TIF 瓦片预加载并切换到原图瓦片的真实浏览器截图

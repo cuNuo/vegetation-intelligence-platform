@@ -11,12 +11,15 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import make_asgi_app
+from starlette.middleware.wsgi import WSGIMiddleware
 
 from app.api.routes import router
 from app.services.agent_tools import load_persisted_custom_indices
 from app.services.nacos import nacos_registration
+from app.services.pygeoapi_runtime import load_pygeoapi_flask_app
 from app.settings import settings
 
 
@@ -48,12 +51,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+app.mount("/pygeoapi", WSGIMiddleware(load_pygeoapi_flask_app()), name="pygeoapi")
 app.mount("/metrics", make_asgi_app())
 app.mount(
     "/artifacts",
     StaticFiles(directory=Path(settings.data_dir), check_dir=False),
     name="artifacts",
 )
+
+
+@app.get("/openapi", include_in_schema=False)
+def pygeoapi_openapi() -> RedirectResponse:
+    """提供 pygeoapi OpenAPI 文档的后端根路径入口。"""
+    return RedirectResponse(url="/pygeoapi/openapi", status_code=307)
 
 
 @app.get("/health")
